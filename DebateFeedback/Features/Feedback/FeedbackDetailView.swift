@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import WebKit
 
 struct FeedbackDetailView: View {
     let recording: SpeechRecording
@@ -14,42 +15,73 @@ struct FeedbackDetailView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showingShareSheet = false
+    @State private var useWebView = true // Show HTML viewer by default
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                // Speaker Header
-                speakerHeader
+        Group {
+            if let urlString = recording.feedbackUrl, let url = URL(string: urlString), useWebView {
+                // Show HTML feedback in WebView
+                VStack(spacing: 0) {
+                    // Speaker info bar
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(recording.speakerName)
+                                .font(.headline)
+                            Text(recording.speakerPosition)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text("\(recording.durationSeconds / 60):\(String(format: "%02d", recording.durationSeconds % 60))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .background(Color(uiColor: .secondarySystemBackground))
 
-                // Feedback Content
-                if isLoading {
-                    loadingView
-                } else if let error = errorMessage {
-                    errorView(error)
-                } else {
-                    feedbackContentView
+                    // WebView with feedback
+                    WebView(url: url)
+                }
+            } else {
+                // Fallback to text-based viewer
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        speakerHeader
+
+                        if isLoading {
+                            loadingView
+                        } else if let error = errorMessage {
+                            errorView(error)
+                        } else {
+                            feedbackContentView
+                        }
+                    }
+                    .padding()
+                }
+                .task {
+                    await loadFeedback()
                 }
             }
-            .padding()
         }
         .navigationTitle("Feedback")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    Button {
-                        if let urlString = recording.feedbackUrl,
-                           let url = URL(string: urlString) {
-                            UIApplication.shared.open(url)
+                    if let urlString = recording.feedbackUrl, URL(string: urlString) != nil {
+                        Button {
+                            if let url = URL(string: urlString) {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            Label("Open in Safari", systemImage: "safari")
                         }
-                    } label: {
-                        Label("Open in Google Docs", systemImage: "doc.text")
-                    }
 
-                    Button {
-                        showingShareSheet = true
-                    } label: {
-                        Label("Share", systemImage: "square.and.arrow.up")
+                        Button {
+                            showingShareSheet = true
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -58,11 +90,8 @@ struct FeedbackDetailView: View {
         }
         .sheet(isPresented: $showingShareSheet) {
             if let url = recording.feedbackUrl {
-                ShareSheet(items: [feedbackContent, URL(string: url)!])
+                ShareSheet(items: [URL(string: url)!])
             }
-        }
-        .task {
-            await loadFeedback()
         }
     }
 
@@ -256,6 +285,38 @@ struct FeedbackSectionData {
     let content: String
 }
 
+// MARK: - WebView Component
+
+struct WebView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.navigationDelegate = context.coordinator
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        let request = URLRequest(url: url)
+        webView.load(request)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // Optionally handle page load completion
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            print("WebView failed to load: \(error.localizedDescription)")
+        }
+    }
+}
+
 #Preview {
     let recording = SpeechRecording(
         speakerName: "Alice Smith",
@@ -264,7 +325,7 @@ struct FeedbackSectionData {
         durationSeconds: 300,
         debateSession: nil
     )
-    recording.feedbackUrl = "https://docs.google.com/document/d/mock_id"
+    recording.feedbackUrl = "http://144.217.164.110:12000/feedback/view/22"
     recording.processingStatus = .complete
 
     return NavigationStack {
