@@ -16,6 +16,8 @@ struct FeedbackDetailView: View {
     @State private var errorMessage: String?
     @State private var showingShareSheet = false
     @State private var useWebView = true // Show HTML viewer by default
+    @State private var webViewLoading = false
+    @State private var webViewError: String?
 
     var body: some View {
         Group {
@@ -32,6 +34,10 @@ struct FeedbackDetailView: View {
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
+                        if webViewLoading {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
                         Text("\(recording.durationSeconds / 60):\(String(format: "%02d", recording.durationSeconds % 60))")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -39,8 +45,34 @@ struct FeedbackDetailView: View {
                     .padding()
                     .background(Color(uiColor: .secondarySystemBackground))
 
-                    // WebView with feedback
-                    WebView(url: url)
+                    // WebView with feedback or error
+                    if let error = webViewError {
+                        VStack(spacing: 16) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 50))
+                                .foregroundColor(.orange)
+
+                            Text("Unable to Load Feedback")
+                                .font(.headline)
+
+                            Text(error)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding()
+
+                            Button {
+                                UIApplication.shared.open(url)
+                            } label: {
+                                Label("Open in Safari", systemImage: "safari")
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        WebView(url: url, isLoading: $webViewLoading, error: $webViewError)
+                    }
                 }
             } else {
                 // Fallback to text-based viewer
@@ -289,30 +321,94 @@ struct FeedbackSectionData {
 
 struct WebView: UIViewRepresentable {
     let url: URL
+    @Binding var isLoading: Bool
+    @Binding var error: String?
+
+    init(url: URL, isLoading: Binding<Bool> = .constant(false), error: Binding<String?> = .constant(nil)) {
+        self.url = url
+        self._isLoading = isLoading
+        self._error = error
+    }
 
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let preferences = WKPreferences()
+        preferences.javaScriptEnabled = true
+
+        let configuration = WKWebViewConfiguration()
+        configuration.preferences = preferences
+        configuration.allowsInlineMediaPlayback = true
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.contentInsetAdjustmentBehavior = .automatic
+        webView.isOpaque = false
+        webView.backgroundColor = .systemBackground
+
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        let request = URLRequest(url: url)
-        webView.load(request)
+        context.coordinator.isLoading = $isLoading
+        context.coordinator.error = $error
+
+        // Only load if not already loaded
+        if webView.url != url {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.timeoutInterval = 30
+
+            print("📱 Loading feedback URL: \(url.absoluteString)")
+            webView.load(request)
+        }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(isLoading: $isLoading, error: $error)
     }
 
     class Coordinator: NSObject, WKNavigationDelegate {
+        var isLoading: Binding<Bool>
+        var error: Binding<String?>
+
+        init(isLoading: Binding<Bool>, error: Binding<String?>) {
+            self.isLoading = isLoading
+            self.error = error
+        }
+
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            print("📱 WebView started loading")
+            DispatchQueue.main.async {
+                self.isLoading.wrappedValue = true
+                self.error.wrappedValue = nil
+            }
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            // Optionally handle page load completion
+            print("📱 WebView finished loading successfully")
+            DispatchQueue.main.async {
+                self.isLoading.wrappedValue = false
+            }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            print("WebView failed to load: \(error.localizedDescription)")
+            print("❌ WebView failed to load: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.isLoading.wrappedValue = false
+                self.error.wrappedValue = "Failed to load feedback: \(error.localizedDescription)"
+            }
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            print("❌ WebView provisional navigation failed: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.isLoading.wrappedValue = false
+                self.error.wrappedValue = "Could not connect to feedback server. Please check your connection."
+            }
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            // Allow all navigation
+            decisionHandler(.allow)
         }
     }
 }
