@@ -37,7 +37,10 @@ struct FeedbackListView: View {
                         GridItem(.flexible())
                     ], spacing: 16) {
                         ForEach(recordings, id: \.id) { recording in
-                            FeedbackCard(recording: recording)
+                            NavigationLink(destination: FeedbackDetailView(recording: recording)) {
+                                FeedbackCard(recording: recording)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal)
@@ -170,9 +173,14 @@ struct FeedbackCard: View {
             // Status
             statusView
 
-            // Actions
-            if recording.processingStatus == .complete, let _ = recording.feedbackUrl {
-                actionButtons
+            // View indicator for completed feedback
+            if recording.processingStatus == .complete {
+                HStack {
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         }
         .padding()

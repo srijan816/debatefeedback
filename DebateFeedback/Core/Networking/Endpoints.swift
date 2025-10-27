@@ -13,6 +13,7 @@ enum Endpoint {
     case createDebate
     case uploadSpeech(debateId: String)
     case getSpeechStatus(speechId: String)
+    case getFeedbackContent(speechId: String)
     case getDebateHistory(teacherId: String, limit: Int)
 
     var path: String {
@@ -27,6 +28,8 @@ enum Endpoint {
             return "/debates/\(debateId)/speeches"
         case .getSpeechStatus(let speechId):
             return "/speeches/\(speechId)/status"
+        case .getFeedbackContent(let speechId):
+            return "/speeches/\(speechId)/feedback"
         case .getDebateHistory(let teacherId, let limit):
             return "/teachers/\(teacherId)/debates?limit=\(limit)"
         }
@@ -36,7 +39,7 @@ enum Endpoint {
         switch self {
         case .login, .createDebate, .uploadSpeech:
             return .post
-        case .getCurrentSchedule, .getSpeechStatus, .getDebateHistory:
+        case .getCurrentSchedule, .getSpeechStatus, .getFeedbackContent, .getDebateHistory:
             return .get
         }
     }

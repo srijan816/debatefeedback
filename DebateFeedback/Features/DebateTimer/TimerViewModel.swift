@@ -215,6 +215,7 @@ final class TimerViewModel {
 
                 recording.uploadStatus = .uploaded
                 recording.processingStatus = .processing
+                recording.speechId = speechId // Store the speech ID
                 try? modelContext.save()
 
                 // Start polling for feedback

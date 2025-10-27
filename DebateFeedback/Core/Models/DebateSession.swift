@@ -133,15 +133,18 @@ struct TeamComposition: Codable {
     func getSpeakerOrder(format: DebateFormat) -> [(studentId: String, position: String)] {
         switch format {
         case .wsdc, .modifiedWsdc, .australs:
+            // Alternate between Prop and Opp: Prop 1, Opp 1, Prop 2, Opp 2, Prop 3, Opp 3
             var speakers: [(String, String)] = []
-            if let prop = prop {
-                for (index, id) in prop.enumerated() {
-                    speakers.append((id, "Prop \(index + 1)"))
+            let propSpeakers = prop ?? []
+            let oppSpeakers = opp ?? []
+            let maxCount = max(propSpeakers.count, oppSpeakers.count)
+
+            for i in 0..<maxCount {
+                if i < propSpeakers.count {
+                    speakers.append((propSpeakers[i], "Prop \(i + 1)"))
                 }
-            }
-            if let opp = opp {
-                for (index, id) in opp.enumerated() {
-                    speakers.append((id, "Opp \(index + 1)"))
+                if i < oppSpeakers.count {
+                    speakers.append((oppSpeakers[i], "Opp \(i + 1)"))
                 }
             }
             return speakers
@@ -171,15 +174,18 @@ struct TeamComposition: Codable {
             return speakers
 
         case .ap:
+            // Alternate between Gov and Opp: Gov 1, Opp 1, Gov 2, Opp 2
             var speakers: [(String, String)] = []
-            if let prop = prop {
-                for (index, id) in prop.enumerated() {
-                    speakers.append((id, "Gov \(index + 1)"))
+            let govSpeakers = prop ?? []
+            let oppSpeakers = opp ?? []
+            let maxCount = max(govSpeakers.count, oppSpeakers.count)
+
+            for i in 0..<maxCount {
+                if i < govSpeakers.count {
+                    speakers.append((govSpeakers[i], "Gov \(i + 1)"))
                 }
-            }
-            if let opp = opp {
-                for (index, id) in opp.enumerated() {
-                    speakers.append((id, "Opp \(index + 1)"))
+                if i < oppSpeakers.count {
+                    speakers.append((oppSpeakers[i], "Opp \(i + 1)"))
                 }
             }
             return speakers

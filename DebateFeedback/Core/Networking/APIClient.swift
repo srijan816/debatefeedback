@@ -318,6 +318,25 @@ struct SpeechStatusResponse: Codable {
     let errorMessage: String?
 }
 
+struct FeedbackContentResponse: Codable {
+    let speechId: String
+    let feedbackText: String
+    let scores: [String: Double]?
+    let sections: [FeedbackSection]?
+
+    struct FeedbackSection: Codable {
+        let title: String
+        let content: String
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case speechId = "speech_id"
+        case feedbackText = "feedback_text"
+        case scores
+        case sections
+    }
+}
+
 struct DebateHistoryResponse: Codable {
     let debates: [DebateHistoryItem]
 }

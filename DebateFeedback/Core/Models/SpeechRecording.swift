@@ -18,6 +18,8 @@ final class SpeechRecording {
     var uploadStatus: UploadStatus
     var processingStatus: ProcessingStatus
     var feedbackUrl: String?
+    var speechId: String? // Backend speech ID for fetching feedback
+    var feedbackContent: String? // Cached feedback content
     var recordedAt: Date
     var uploadProgress: Double
 
