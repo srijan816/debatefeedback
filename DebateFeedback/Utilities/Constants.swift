@@ -11,14 +11,14 @@ enum Constants {
 
     // MARK: - API Configuration
     enum API {
-        static let baseURL = "http://144.217.164.110:12000/api"
+        static let baseURL = "https://api.genalphai.com/api"
         static let requestTimeout: TimeInterval = 30.0
         static let uploadTimeout: TimeInterval = 120.0
         static let maxRetryAttempts = 3
         static let feedbackPollingInterval: TimeInterval = 5.0
 
         // Development mode
-        static var useMockData = false // Backend ready - using direct IP until DNS is fixed
+        static var useMockData = false
     }
 
     // MARK: - Audio Configuration
