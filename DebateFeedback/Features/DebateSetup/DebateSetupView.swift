@@ -417,7 +417,9 @@ struct DebateSetupView: View {
 
             if viewModel.currentStep == .teamAssignment {
                 Button("Start Debate") {
-                    startDebate()
+                    Task {
+                        await startDebate()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(viewModel.isCreatingDebate)
@@ -432,8 +434,11 @@ struct DebateSetupView: View {
         .background(Color(uiColor: .systemBackground))
     }
 
-    private func startDebate() {
-        guard let session = viewModel.createDebate(
+    private func startDebate() async {
+        viewModel.isCreatingDebate = true
+        defer { viewModel.isCreatingDebate = false }
+
+        guard let session = await viewModel.createDebate(
             context: modelContext,
             teacher: coordinator.currentTeacher
         ) else {

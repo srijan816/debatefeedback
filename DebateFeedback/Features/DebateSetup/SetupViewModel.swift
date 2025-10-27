@@ -208,7 +208,7 @@ final class SetupViewModel {
 
     // MARK: - Debate Creation
 
-    func createDebate(context: ModelContext, teacher: Teacher?) -> DebateSession? {
+    func createDebate(context: ModelContext, teacher: Teacher?) async -> DebateSession? {
         guard validateTeamAssignment() else {
             return nil
         }
@@ -243,6 +243,18 @@ final class SetupViewModel {
         // Add students to session
         session.students = students
 
+        // Create debate on backend if not in mock mode
+        if !Constants.API.useMockData {
+            do {
+                let backendDebateId = try await createDebateOnBackend(session: session)
+                session.backendDebateId = backendDebateId
+            } catch {
+                errorMessage = "Failed to create debate on server: \(error.localizedDescription)"
+                showError = true
+                return nil
+            }
+        }
+
         // Insert into database
         context.insert(session)
         for student in students {
@@ -252,6 +264,83 @@ final class SetupViewModel {
         try? context.save()
 
         return session
+    }
+
+    private func createDebateOnBackend(session: DebateSession) async throws -> String {
+        // Prepare teams data
+        var teamsData = TeamsData()
+        guard let composition = session.teamComposition else {
+            throw NetworkError.unknown(NSError(domain: "No team composition", code: -1))
+        }
+
+        switch selectedFormat {
+        case .wsdc, .modifiedWsdc, .australs:
+            if let propIds = composition.prop {
+                teamsData.prop = propIds.enumerated().map { index, id in
+                    let student = students.first(where: { $0.id.uuidString == id })
+                    return StudentData(name: student?.name ?? "Unknown", position: "Prop \(index + 1)")
+                }
+            }
+            if let oppIds = composition.opp {
+                teamsData.opp = oppIds.enumerated().map { index, id in
+                    let student = students.first(where: { $0.id.uuidString == id })
+                    return StudentData(name: student?.name ?? "Unknown", position: "Opp \(index + 1)")
+                }
+            }
+        case .bp:
+            if let ogIds = composition.og {
+                teamsData.og = ogIds.enumerated().map { index, id in
+                    let student = students.first(where: { $0.id.uuidString == id })
+                    return StudentData(name: student?.name ?? "Unknown", position: "OG \(index + 1)")
+                }
+            }
+            if let ooIds = composition.oo {
+                teamsData.oo = ooIds.enumerated().map { index, id in
+                    let student = students.first(where: { $0.id.uuidString == id })
+                    return StudentData(name: student?.name ?? "Unknown", position: "OO \(index + 1)")
+                }
+            }
+            if let cgIds = composition.cg {
+                teamsData.cg = cgIds.enumerated().map { index, id in
+                    let student = students.first(where: { $0.id.uuidString == id })
+                    return StudentData(name: student?.name ?? "Unknown", position: "CG \(index + 1)")
+                }
+            }
+            if let coIds = composition.co {
+                teamsData.co = coIds.enumerated().map { index, id in
+                    let student = students.first(where: { $0.id.uuidString == id })
+                    return StudentData(name: student?.name ?? "Unknown", position: "CO \(index + 1)")
+                }
+            }
+        case .ap:
+            if let propIds = composition.prop {
+                teamsData.prop = propIds.enumerated().map { index, id in
+                    let student = students.first(where: { $0.id.uuidString == id })
+                    return StudentData(name: student?.name ?? "Unknown", position: "Gov \(index + 1)")
+                }
+            }
+            if let oppIds = composition.opp {
+                teamsData.opp = oppIds.enumerated().map { index, id in
+                    let student = students.first(where: { $0.id.uuidString == id })
+                    return StudentData(name: student?.name ?? "Unknown", position: "Opp \(index + 1)")
+                }
+            }
+        }
+
+        let request = CreateDebateRequest(
+            motion: session.motion,
+            format: session.format.rawValue,
+            studentLevel: session.studentLevel.rawValue,
+            speechTimeSeconds: session.speechTimeSeconds,
+            teams: teamsData
+        )
+
+        let response: CreateDebateResponse = try await APIClient.shared.request(
+            endpoint: .createDebate,
+            body: request
+        )
+
+        return response.id
     }
 
     // MARK: - Helper Methods

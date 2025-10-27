@@ -19,6 +19,9 @@ final class DebateSession {
     var createdAt: Date
     var isGuestMode: Bool
 
+    // Backend integration
+    var backendDebateId: String? // The debate ID from the backend API
+
     // Team composition stored as JSON-encoded data
     var teamCompositionData: Data?
 

@@ -44,9 +44,12 @@ final class UploadService: NSObject {
         ]
 
         do {
+            // Use backend debate ID if available, otherwise fall back to local ID
+            let debateId = debateSession.backendDebateId ?? debateSession.id.uuidString
+
             // Attempt upload
             let response = try await apiClient.upload(
-                endpoint: .uploadSpeech(debateId: debateSession.id.uuidString),
+                endpoint: .uploadSpeech(debateId: debateId),
                 fileURL: task.fileURL,
                 metadata: metadata,
                 progressHandler: progressHandler
@@ -101,8 +104,11 @@ final class UploadService: NSObject {
         ]
 
         do {
+            // Use backend debate ID if available, otherwise fall back to local ID
+            let debateId = debateSession.backendDebateId ?? debateSession.id.uuidString
+
             let response = try await apiClient.upload(
-                endpoint: .uploadSpeech(debateId: debateSession.id.uuidString),
+                endpoint: .uploadSpeech(debateId: debateId),
                 fileURL: task.fileURL,
                 metadata: metadata,
                 progressHandler: progressHandler

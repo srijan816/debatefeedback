@@ -215,7 +215,8 @@ actor APIClient {
             return response as! T
 
         case .createDebate:
-            let response = CreateDebateResponse(debateId: UUID().uuidString)
+            let uuid = UUID().uuidString
+            let response = CreateDebateResponse(debateId: uuid, debate_id: uuid)
             return response as! T
 
         case .getSpeechStatus:
@@ -263,8 +264,46 @@ struct StudentResponse: Codable {
     let level: String
 }
 
+struct CreateDebateRequest: Codable {
+    let motion: String
+    let format: String
+    let studentLevel: String
+    let speechTimeSeconds: Int
+    let teams: TeamsData
+
+    enum CodingKeys: String, CodingKey {
+        case motion, format, teams
+        case studentLevel = "student_level"
+        case speechTimeSeconds = "speech_time_seconds"
+    }
+}
+
+struct TeamsData: Codable {
+    var prop: [StudentData]?
+    var opp: [StudentData]?
+    var og: [StudentData]?
+    var oo: [StudentData]?
+    var cg: [StudentData]?
+    var co: [StudentData]?
+}
+
+struct StudentData: Codable {
+    let name: String
+    let position: String
+}
+
 struct CreateDebateResponse: Codable {
     let debateId: String
+    let debate_id: String? // Backend might return both formats
+
+    var id: String {
+        return debate_id ?? debateId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case debateId
+        case debate_id
+    }
 }
 
 struct UploadResponse: Codable {
