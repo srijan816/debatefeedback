@@ -1,0 +1,210 @@
+//
+//  Constants.swift
+//  DebateFeedback
+//
+//  Created by Claude on 10/24/25.
+//
+
+import SwiftUI
+
+enum Constants {
+
+    // MARK: - API Configuration
+    enum API {
+        static let baseURL = "https://api.genalphai.com/api"
+        static let requestTimeout: TimeInterval = 30.0
+        static let uploadTimeout: TimeInterval = 120.0
+        static let maxRetryAttempts = 3
+        static let feedbackPollingInterval: TimeInterval = 5.0
+
+        // Development mode
+        static var useMockData = false
+    }
+
+    // MARK: - Audio Configuration
+    enum Audio {
+        static let fileExtension = "m4a"
+        static let sampleRate: Double = 44100.0
+        static let bitRate = 128000 // 128kbps
+        static let numberOfChannels = 1 // Mono
+
+        // Bell timings (in seconds)
+        static let firstBellTime: TimeInterval = 60.0
+        static let overtimeBellInterval: TimeInterval = 15.0
+
+        // Audio file names
+        static let bellSingleSound = "bell_1"
+        static let bellDoubleSound = "bell_2"
+        static let bellTripleSound = "bell_3"
+    }
+
+    // MARK: - Timer Configuration
+    enum Timer {
+        static let displayRefreshRate = 60 // FPS for timer updates
+        static let timerAccuracyTolerance: TimeInterval = 0.1 // ±100ms
+    }
+
+    // MARK: - UI Colors
+    enum Colors {
+        // Background colors - Light clean theme
+        static let backgroundLight = Color.white // Pure white
+        static let backgroundSecondary = Color(red: 0.98, green: 0.98, blue: 0.99) // #fafafe - Very light gray
+        static let backgroundTertiary = Color(red: 0.95, green: 0.96, blue: 0.98) // #f2f4f9 - Light blue-gray
+        static let cardBackground = Color.white // White cards with shadows
+
+        // Mascot-inspired colors (from Ollie the Owl)
+        static let mascotNavy = Color(red: 0.12, green: 0.23, blue: 0.37) // #1e3a5f - Navy blue
+        static let mascotPink = Color(red: 0.97, green: 0.14, blue: 0.52) // #f72585 - Hot pink
+        static let mascotLightBlue = Color(red: 0.86, green: 0.91, blue: 1.0) // #dbe9ff - Light blue
+
+        // Enhanced colors for UI
+        static let softPink = mascotPink // Use mascot pink
+        static let softMint = Color(red: 0.50, green: 0.90, blue: 0.75) // #80e6bf - Vibrant mint
+        static let softCyan = Color(red: 0.45, green: 0.80, blue: 0.95) // #73ccf2 - Vibrant cyan
+        static let softPurple = Color(red: 0.75, green: 0.65, blue: 0.95) // #bfa6f2 - Vibrant purple
+
+        // Blue buttons (more vibrant)
+        static let primaryBlue = Color(red: 0.20, green: 0.52, blue: 0.95) // #3385f2 - More vibrant blue
+        static let primaryBlueDark = Color(red: 0.15, green: 0.42, blue: 0.88) // #2668e0 - Darker vibrant blue
+
+        // Primary action colors
+        static let primaryAction = primaryBlue
+        static let secondaryAction = softPink
+        static let tertiaryAction = softMint
+
+        // Status colors
+        static let recordingActive = Color.red
+        static let success = softMint
+        static let warning = Color(red: 1.0, green: 0.85, blue: 0.60) // Soft orange
+        static let error = Color(red: 1.0, green: 0.70, blue: 0.70) // Soft red
+
+        // Text colors for light theme
+        static let textPrimary = Color(red: 0.12, green: 0.12, blue: 0.15) // #1e1e26 - Almost black
+        static let textSecondary = Color(red: 0.45, green: 0.45, blue: 0.50) // #737380 - Medium gray
+        static let textTertiary = Color(red: 0.65, green: 0.65, blue: 0.70) // #a6a6b3 - Light gray
+        static let textOnButton = Color.white // White text on colored buttons
+        static let textOnCard = textPrimary // Dark text on white cards
+
+        // Team colors - soft pastels
+        static let propTeam = softCyan
+        static let oppTeam = softPink
+
+        // BP Teams
+        static let ogTeam = softCyan
+        static let ooTeam = softPink
+        static let cgTeam = softMint
+        static let coTeam = softPurple
+
+        // Status colors
+        static let pending = Color.gray
+        static let uploading = softCyan
+        static let uploaded = softMint
+        static let failed = error
+        static let processing = softPurple
+        static let complete = softMint
+    }
+
+    // MARK: - Gradients
+    enum Gradients {
+        // Blue gradient for primary buttons
+        static let primaryButton = LinearGradient(
+            colors: [Colors.primaryBlue, Colors.primaryBlueDark],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        static let secondaryButton = LinearGradient(
+            colors: [Colors.softPink],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+
+        static let propTeam = LinearGradient(
+            colors: [Colors.softCyan],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        static let oppTeam = LinearGradient(
+            colors: [Colors.softPink],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        static let background = LinearGradient(
+            colors: [Colors.backgroundLight],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    // MARK: - UI Sizing
+    enum Sizing {
+        static let minimumTapTarget: CGFloat = 44.0
+        static let buttonCornerRadius: CGFloat = 12.0
+        static let cardCornerRadius: CGFloat = 16.0
+        static let standardPadding: CGFloat = 16.0
+        static let compactPadding: CGFloat = 8.0
+
+        // Timer display
+        static let timerFontSizeiPhone: CGFloat = 72.0
+        static let timerFontSizeiPad: CGFloat = 120.0
+    }
+
+    // MARK: - Animation
+    enum Animation {
+        static let standard = SwiftUI.Animation.easeInOut(duration: 0.3)
+        static let quick = SwiftUI.Animation.easeInOut(duration: 0.15)
+        static let spring = SwiftUI.Animation.spring(response: 0.5, dampingFraction: 0.7)
+    }
+
+    // MARK: - User Defaults Keys
+    enum UserDefaultsKeys {
+        static let deviceId = "com.debatefeedback.deviceId"
+        static let authToken = "com.debatefeedback.authToken"
+        static let currentTeacherId = "com.debatefeedback.teacherId"
+        static let isGuestMode = "com.debatefeedback.isGuestMode"
+        static let hasShownOnboarding = "com.debatefeedback.hasShownOnboarding"
+    }
+
+    // MARK: - File Management
+    enum Files {
+        static let audioDirectory = "Recordings"
+        static let maxLocalStorageDays = 7 // Delete files older than 7 days
+    }
+
+    // MARK: - Debate Formats
+    static let debateFormats: [DebateFormat] = [.wsdc, .modifiedWsdc, .bp, .ap, .australs]
+
+    // MARK: - Validation
+    enum Validation {
+        static let minimumMotionLength = 5
+        static let maximumMotionLength = 200
+        static let minimumSpeakerName = 2
+        static let maximumSpeakerName = 50
+        static let minimumSpeechTime = 60 // 1 minute
+        static let maximumSpeechTime = 900 // 15 minutes
+    }
+
+    // MARK: - Error Messages
+    enum ErrorMessages {
+        static let networkUnavailable = "No internet connection. Please check your network settings."
+        static let uploadFailed = "Failed to upload recording. Tap to retry."
+        static let microphonePermissionDenied = "Microphone access is required. Please enable it in Settings."
+        static let recordingFailed = "Failed to start recording. Please try again."
+        static let invalidMotion = "Please enter a valid motion (5-200 characters)."
+        static let noStudentsSelected = "Please add at least one student to each team."
+        static let teamAssignmentIncomplete = "Please assign all students to teams."
+    }
+}
+
+// MARK: - Device Type Helper
+extension Constants {
+    static var isIPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    static var timerFontSize: CGFloat {
+        isIPad ? Sizing.timerFontSizeiPad : Sizing.timerFontSizeiPhone
+    }
+}

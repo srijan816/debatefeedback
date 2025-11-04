@@ -1,0 +1,493 @@
+//
+//  TimerMainView.swift
+//  DebateFeedback
+//
+//  Created by Claude on 10/24/25.
+//
+
+import SwiftUI
+import SwiftData
+
+struct TimerMainView: View {
+    let debateSession: DebateSession
+
+    @Environment(AppCoordinator.self) private var coordinator
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var viewModel: TimerViewModel?
+
+    var body: some View {
+        Group {
+            if let viewModel = viewModel {
+                timerContent(viewModel: viewModel)
+            } else {
+                ProgressView("Loading...")
+            }
+        }
+        .onAppear {
+            if viewModel == nil {
+                viewModel = TimerViewModel(debateSession: debateSession, modelContext: modelContext)
+            }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { viewModel?.showError ?? false },
+            set: { if !$0 { viewModel?.showError = false } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(viewModel?.errorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private func timerContent(viewModel: TimerViewModel) -> some View {
+        ZStack {
+            // Light background with subtle glitters
+            Constants.Colors.backgroundLight
+                .ignoresSafeArea()
+
+            SubtleGlitterView()
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Motion Header
+                motionHeader(viewModel: viewModel)
+
+                // Main Timer Display
+                Spacer()
+
+                timerDisplay(viewModel: viewModel)
+
+                Spacer()
+
+                // Control Buttons
+                controlButtons(viewModel: viewModel)
+
+                // Navigation
+                speakerNavigation(viewModel: viewModel)
+
+                // Recordings List (if any completed)
+                if !viewModel.recordings.isEmpty {
+                    recordingsList(viewModel: viewModel)
+                }
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(viewModel.isRecording)
+        .toolbarBackground(Constants.Colors.backgroundLight, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.light, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if viewModel.isDebateComplete {
+                    Button("View Feedback") {
+                        coordinator.finishDebate()
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundColor(Constants.Colors.softMint)
+                }
+            }
+        }
+        .preferredColorScheme(.light)
+    }
+
+    // MARK: - Motion Header
+
+    private func motionHeader(viewModel: TimerViewModel) -> some View {
+        VStack(spacing: 12) {
+            // Motion text
+            Text(debateSession.motion)
+                .font(.body)
+                .fontWeight(.medium)
+                .multilineTextAlignment(.center)
+                .foregroundColor(Constants.Colors.textPrimary)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+
+            // Current Speaker Card
+            HStack(spacing: 16) {
+                // Avatar circle
+                Circle()
+                    .fill(Constants.Colors.primaryBlue)
+                    .frame(width: 50, height: 50)
+                    .overlay(
+                        Text(String(viewModel.currentSpeaker.name.prefix(1)))
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(viewModel.currentSpeaker.name)
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+
+                    Text(viewModel.currentSpeaker.position)
+                        .font(.subheadline)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+
+                Spacer()
+            }
+            .padding(16)
+            .softCard(backgroundColor: Constants.Colors.cardBackground, borderColor: Constants.Colors.textTertiary.opacity(0.2), cornerRadius: 16)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
+        .background(Constants.Colors.backgroundSecondary)
+    }
+
+    // MARK: - Timer Display
+
+    private func timerDisplay(viewModel: TimerViewModel) -> some View {
+        VStack(spacing: 24) {
+            // Simple timer display
+            VStack(spacing: 16) {
+                // Timer
+                HStack(spacing: 16) {
+                    Spacer()
+
+                    Text(viewModel.formattedTime)
+                        .font(.system(size: Constants.timerFontSize, weight: .bold, design: .monospaced))
+                        .foregroundColor(viewModel.isOvertime ? .red : Constants.Colors.textPrimary)
+
+                    // Bell Icon
+                    if viewModel.isRecording {
+                        Button {
+                            viewModel.ringBell()
+                        } label: {
+                            Image(systemName: "bell.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(Constants.Colors.primaryBlue)
+                                .symbolEffect(.bounce, value: viewModel.elapsedTime)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Spacer()
+                }
+
+                // Simple progress bar
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Constants.Colors.textTertiary.opacity(0.2))
+                            .frame(height: 10)
+
+                        Capsule()
+                            .fill(viewModel.isOvertime ? Color.red : Constants.Colors.primaryBlue)
+                            .frame(width: geometry.size.width * viewModel.progressPercentage, height: 10)
+                    }
+                }
+                .frame(height: 10)
+                .padding(.horizontal, 40)
+            }
+            .padding(24)
+            .softCard(backgroundColor: Constants.Colors.cardBackground, borderColor: nil, cornerRadius: 20)
+
+            // Recording indicator
+            if viewModel.isRecording {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(Constants.Colors.recordingActive)
+                        .frame(width: 12, height: 12)
+                        .opacity(0.8)
+                        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: viewModel.isRecording)
+
+                    Text("Recording")
+                        .font(.subheadline)
+                        .foregroundColor(Constants.Colors.textPrimary)
+                }
+            }
+        }
+    }
+
+    // MARK: - Control Buttons
+
+    private func controlButtons(viewModel: TimerViewModel) -> some View {
+        HStack(spacing: 20) {
+            if viewModel.isRecording {
+                Button {
+                    viewModel.stopTimer()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "stop.fill")
+                            .font(.title2)
+                        Text("Stop Recording")
+                            .fontWeight(.bold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Constants.Sizing.minimumTapTarget * 1.5)
+                }
+                .gradientButtonStyle(
+                    gradient: LinearGradient(
+                        colors: [Color.red.opacity(0.9), Color.red.opacity(0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            } else {
+                Button {
+                    viewModel.startTimer()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "play.fill")
+                            .font(.title2)
+                        Text("Start Recording")
+                            .fontWeight(.bold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Constants.Sizing.minimumTapTarget * 1.5)
+                }
+                .gradientButtonStyle()
+            }
+        }
+        .padding(.horizontal, 32)
+        .padding(.bottom, 16)
+    }
+
+    // MARK: - Speaker Navigation
+
+    private func speakerNavigation(viewModel: TimerViewModel) -> some View {
+        HStack(spacing: 16) {
+            Button {
+                viewModel.previousSpeaker()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.left")
+                    Text("Previous")
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(viewModel.canGoBack && !viewModel.isRecording ? Constants.Colors.textPrimary : Constants.Colors.textTertiary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Constants.Colors.backgroundSecondary)
+                .cornerRadius(25)
+            }
+            .disabled(!viewModel.canGoBack || viewModel.isRecording)
+            .opacity(viewModel.canGoBack && !viewModel.isRecording ? 1.0 : 0.4)
+
+            Spacer()
+
+            Text(viewModel.speakerProgress)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(Constants.Colors.textSecondary)
+
+            Spacer()
+
+            Button {
+                viewModel.nextSpeaker()
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Next")
+                        .fontWeight(.medium)
+                    Image(systemName: "chevron.right")
+                }
+                .foregroundColor(viewModel.canGoForward && !viewModel.isRecording ? Constants.Colors.textPrimary : Constants.Colors.textTertiary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Constants.Colors.backgroundSecondary)
+                .cornerRadius(25)
+            }
+            .disabled(!viewModel.canGoForward || viewModel.isRecording)
+            .opacity(viewModel.canGoForward && !viewModel.isRecording ? 1.0 : 0.4)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(Constants.Colors.backgroundSecondary)
+    }
+
+    // MARK: - Recordings List
+
+    private func recordingsList(viewModel: TimerViewModel) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Completed Speeches")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+                    Text("\(viewModel.completedSpeeches) recordings")
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Image(systemName: "hand.tap")
+                        .font(.caption2)
+                    Text("Double-tap to play")
+                        .font(.caption2)
+                }
+                .foregroundColor(Constants.Colors.textSecondary)
+            }
+            .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(viewModel.recordings, id: \.id) { recording in
+                        RecordingCard(recording: recording, viewModel: viewModel)
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+        .padding(.vertical, 16)
+        .background(Constants.Colors.backgroundSecondary)
+    }
+}
+
+// MARK: - Recording Card
+
+struct RecordingCard: View {
+    let recording: SpeechRecording
+    @Bindable var viewModel: TimerViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(recording.speakerName)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+                        .lineLimit(1)
+
+                    Text(recording.speakerPosition)
+                        .font(.caption2)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Playback indicator
+                if isPlaying {
+                    Image(systemName: "waveform")
+                        .font(.body)
+                        .foregroundColor(Constants.Colors.primaryBlue)
+                        .symbolEffect(.variableColor.iterative, isActive: isPlaying)
+                }
+            }
+
+            // Duration
+            HStack {
+                Image(systemName: "clock")
+                    .font(.caption2)
+                    .foregroundColor(Constants.Colors.textSecondary)
+                Text(viewModel.getPlaybackTime(for: recording))
+                    .font(.caption2)
+                    .foregroundColor(Constants.Colors.textSecondary)
+            }
+
+            // Status
+            HStack {
+                statusIndicator
+
+                if recording.uploadStatus == .uploading,
+                   let progress = viewModel.uploadProgress[recording.id] {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .tint(Constants.Colors.primaryBlue)
+                }
+            }
+
+            // Playback progress
+            if isPlaying {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Constants.Colors.textTertiary.opacity(0.2))
+                            .frame(height: 4)
+
+                        Capsule()
+                            .fill(Constants.Colors.primaryBlue)
+                            .frame(width: geometry.size.width * viewModel.getPlaybackProgress(for: recording), height: 4)
+                    }
+                }
+                .frame(height: 4)
+            }
+        }
+        .padding(16)
+        .frame(width: 170)
+        .frame(minHeight: 130)
+        .softCard(
+            backgroundColor: Constants.Colors.cardBackground,
+            borderColor: isPlaying ? Constants.Colors.primaryBlue : nil,
+            cornerRadius: 16
+        )
+        .scaleEffect(isPlaying ? 1.03 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPlaying)
+        .onTapGesture(count: 2) {
+            viewModel.togglePlayback(for: recording)
+        }
+    }
+
+    private var isPlaying: Bool {
+        viewModel.playingRecordingId == recording.id && viewModel.isPlaying
+    }
+
+    private var statusIndicator: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+
+            Text(statusText)
+                .font(.caption2)
+                .foregroundColor(statusColor)
+        }
+    }
+
+    private var statusColor: Color {
+        if recording.processingStatus == .complete {
+            return Constants.Colors.complete
+        } else if recording.uploadStatus == .failed || recording.processingStatus == .failed {
+            return Constants.Colors.failed
+        } else if recording.uploadStatus == .uploading {
+            return Constants.Colors.uploading
+        } else if recording.processingStatus == .processing {
+            return Constants.Colors.processing
+        }
+        return Constants.Colors.pending
+    }
+
+    private var statusText: String {
+        if recording.processingStatus == .complete {
+            return "Ready"
+        } else if recording.uploadStatus == .failed {
+            return "Failed"
+        } else if recording.uploadStatus == .uploading {
+            return "Uploading"
+        } else if recording.processingStatus == .processing {
+            return "Processing"
+        }
+        return "Pending"
+    }
+}
+
+#Preview {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: DebateSession.self, configurations: config)
+
+    let session = DebateSession(
+        motion: "This house believes that social media does more harm than good",
+        format: .wsdc,
+        studentLevel: .secondary,
+        speechTimeSeconds: 300
+    )
+
+    var composition = TeamComposition()
+    composition.prop = [UUID().uuidString, UUID().uuidString, UUID().uuidString]
+    composition.opp = [UUID().uuidString, UUID().uuidString, UUID().uuidString]
+    session.teamComposition = composition
+
+    return NavigationStack {
+        TimerMainView(debateSession: session)
+            .environment(AppCoordinator())
+            .modelContainer(container)
+    }
+}
