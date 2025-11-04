@@ -58,13 +58,17 @@ struct FeedbackListView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
+                    HapticManager.shared.success()
                     coordinator.resetToRoot()
                 } label: {
                     Text("Done")
                         .fontWeight(.semibold)
                 }
+                .accessibilityLabel("Done button")
+                .accessibilityHint("Return to home screen")
             }
         }
+        .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
     }
 
     // MARK: - Debate Info Header

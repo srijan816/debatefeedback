@@ -67,7 +67,13 @@ struct DebateSetupView: View {
                 Text(viewModel.errorMessage)
             }
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
+        .toast(
+            isShowing: $viewModel.showToast,
+            message: viewModel.toastMessage,
+            icon: "checkmark.circle.fill",
+            type: viewModel.toastType
+        )
         .task {
             await viewModel.loadScheduleIfNeeded(for: coordinator.currentTeacher)
         }
@@ -115,9 +121,16 @@ struct DebateSetupView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("Motion")
-                    .font(.headline)
-                    .foregroundColor(Constants.Colors.textSecondary)
+                HStack {
+                    Text("Motion")
+                        .font(.headline)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                    Spacer()
+                    Text("\(viewModel.motionCharCount)/200")
+                        .font(.caption2)
+                        .foregroundColor(viewModel.motionCharCountColor)
+                }
+
                 TextField("Enter debate motion...", text: $viewModel.motion, axis: .vertical)
                     .padding()
                     .background(Constants.Colors.backgroundSecondary)
@@ -125,9 +138,22 @@ struct DebateSetupView: View {
                     .cornerRadius(12)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Constants.Colors.textTertiary.opacity(0.3), lineWidth: 1)
+                            .stroke(viewModel.motionBorderColor, lineWidth: 1.5)
                     )
                     .lineLimit(2...4)
+                    .accessibilityLabel("Motion text field")
+                    .accessibilityHint("Enter the debate motion between 5 and 200 characters")
+
+                if !viewModel.motionValidationMessage.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                        Text(viewModel.motionValidationMessage)
+                            .font(.caption2)
+                    }
+                    .foregroundColor(Constants.Colors.failed)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -428,28 +454,56 @@ struct DebateSetupView: View {
                 .fontWeight(.bold)
                 .foregroundColor(Constants.Colors.textPrimary)
 
-            HStack(spacing: 12) {
-                TextField("Enter student name", text: $viewModel.newStudentName)
-                    .textContentType(.name)
-                    .autocapitalization(.words)
-                    .onSubmit {
-                        viewModel.addStudent()
-                    }
-                    .padding()
-                    .background(Constants.Colors.backgroundSecondary)
-                    .foregroundColor(Constants.Colors.textPrimary)
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Constants.Colors.softCyan.opacity(0.3), lineWidth: 1)
-                    )
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    TextField("Enter student name", text: $viewModel.newStudentName)
+                        .textContentType(.name)
+                        .autocapitalization(.words)
+                        .onSubmit {
+                            if viewModel.isStudentNameValid {
+                                viewModel.addStudent()
+                            }
+                        }
+                        .padding()
+                        .background(Constants.Colors.backgroundSecondary)
+                        .foregroundColor(Constants.Colors.textPrimary)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    viewModel.newStudentName.isEmpty
+                                        ? Constants.Colors.softCyan.opacity(0.3)
+                                        : (viewModel.isStudentNameValid ? Constants.Colors.complete.opacity(0.5) : Constants.Colors.failed.opacity(0.5)),
+                                    lineWidth: 1.5
+                                )
+                        )
+                        .accessibilityLabel("Student name text field")
+                        .accessibilityHint("Enter a student name between 2 and 50 characters")
 
-                Button(action: viewModel.addStudent) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(Constants.Gradients.primaryButton)
+                    Button(action: {
+                        HapticManager.shared.medium()
+                        viewModel.addStudent()
+                    }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Constants.Gradients.primaryButton)
+                    }
+                    .disabled(!viewModel.isStudentNameValid)
+                    .opacity(viewModel.isStudentNameValid ? 1.0 : 0.5)
+                    .accessibilityLabel("Add student button")
+                    .accessibilityHint(viewModel.isStudentNameValid ? "Tap to add student" : "Enter a valid name first")
                 }
-                .disabled(viewModel.newStudentName.isEmpty)
+
+                if !viewModel.studentNameValidationMessage.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                        Text(viewModel.studentNameValidationMessage)
+                            .font(.caption2)
+                    }
+                    .foregroundColor(Constants.Colors.failed)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
 
             if viewModel.isLoadingSchedule {

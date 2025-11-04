@@ -76,19 +76,21 @@ struct TimerMainView: View {
         .navigationBarBackButtonHidden(viewModel.isRecording)
         .toolbarBackground(Constants.Colors.backgroundLight, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarColorScheme(.light, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 if viewModel.isDebateComplete {
                     Button("View Feedback") {
+                        HapticManager.shared.success()
                         coordinator.finishDebate()
                     }
                     .fontWeight(.semibold)
                     .foregroundColor(Constants.Colors.softMint)
+                    .accessibilityLabel("View feedback button")
+                    .accessibilityHint("Navigate to feedback list for all speeches")
                 }
             }
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
     }
 
     // MARK: - Motion Header
@@ -151,6 +153,8 @@ struct TimerMainView: View {
                     Text(viewModel.formattedTime)
                         .font(.system(size: Constants.timerFontSize, weight: .bold, design: .monospaced))
                         .foregroundColor(viewModel.isOvertime ? .red : Constants.Colors.textPrimary)
+                        .accessibilityLabel("Timer")
+                        .accessibilityValue("\(viewModel.formattedTime)\(viewModel.isOvertime ? ", overtime" : "")")
 
                     // Bell Icon
                     if viewModel.isRecording {
@@ -209,6 +213,7 @@ struct TimerMainView: View {
         HStack(spacing: 20) {
             if viewModel.isRecording {
                 Button {
+                    HapticManager.shared.heavy()
                     viewModel.stopTimer()
                 } label: {
                     HStack(spacing: 12) {
@@ -227,8 +232,11 @@ struct TimerMainView: View {
                         endPoint: .bottomTrailing
                     )
                 )
+                .accessibilityLabel("Stop recording button")
+                .accessibilityHint("Stops recording the current speech")
             } else {
                 Button {
+                    HapticManager.shared.heavy()
                     viewModel.startTimer()
                 } label: {
                     HStack(spacing: 12) {
@@ -241,6 +249,8 @@ struct TimerMainView: View {
                     .frame(height: Constants.Sizing.minimumTapTarget * 1.5)
                 }
                 .gradientButtonStyle()
+                .accessibilityLabel("Start recording button")
+                .accessibilityHint("Starts recording the current speech and begins the timer")
             }
         }
         .padding(.horizontal, 32)
@@ -252,6 +262,7 @@ struct TimerMainView: View {
     private func speakerNavigation(viewModel: TimerViewModel) -> some View {
         HStack(spacing: 16) {
             Button {
+                HapticManager.shared.light()
                 viewModel.previousSpeaker()
             } label: {
                 HStack(spacing: 8) {
@@ -267,6 +278,8 @@ struct TimerMainView: View {
             }
             .disabled(!viewModel.canGoBack || viewModel.isRecording)
             .opacity(viewModel.canGoBack && !viewModel.isRecording ? 1.0 : 0.4)
+            .accessibilityLabel("Previous speaker button")
+            .accessibilityHint(viewModel.canGoBack ? "Go to previous speaker" : "No previous speaker available")
 
             Spacer()
 
@@ -278,6 +291,7 @@ struct TimerMainView: View {
             Spacer()
 
             Button {
+                HapticManager.shared.light()
                 viewModel.nextSpeaker()
             } label: {
                 HStack(spacing: 8) {
@@ -293,6 +307,8 @@ struct TimerMainView: View {
             }
             .disabled(!viewModel.canGoForward || viewModel.isRecording)
             .opacity(viewModel.canGoForward && !viewModel.isRecording ? 1.0 : 0.4)
+            .accessibilityLabel("Next speaker button")
+            .accessibilityHint(viewModel.canGoForward ? "Go to next speaker" : "No next speaker available")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
