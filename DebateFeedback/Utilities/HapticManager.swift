@@ -15,7 +15,7 @@ class HapticManager {
     private let impactMedium = UIImpactFeedbackGenerator(style: .medium)
     private let impactHeavy = UIImpactFeedbackGenerator(style: .heavy)
     private let notification = UINotificationFeedbackGenerator()
-    private let selection = UISelectionFeedbackGenerator()
+    private let selectionGenerator = UISelectionFeedbackGenerator()
 
     private init() {
         // Prepare generators for faster response
@@ -23,7 +23,7 @@ class HapticManager {
         impactMedium.prepare()
         impactHeavy.prepare()
         notification.prepare()
-        selection.prepare()
+        selectionGenerator.prepare()
     }
 
     // MARK: - Impact Feedback
@@ -48,8 +48,8 @@ class HapticManager {
 
     /// Selection feedback for picker-like interactions
     func selection() {
-        selection.selectionChanged()
-        selection.prepare()
+        selectionGenerator.selectionChanged()
+        selectionGenerator.prepare()
     }
 
     // MARK: - Notification Feedback
