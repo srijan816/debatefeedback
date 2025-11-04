@@ -39,6 +39,11 @@ final class TimerViewModel {
     var errorMessage = ""
     var uploadProgress: [UUID: Double] = [:]
 
+    // Warning state tracking (to avoid repeated haptics)
+    @ObservationIgnored private var has60sWarningFired = false
+    @ObservationIgnored private var has30sWarningFired = false
+    @ObservationIgnored private var has15sWarningFired = false
+
     init(debateSession: DebateSession, modelContext: ModelContext) {
         self.debateSession = debateSession
         self.modelContext = modelContext
@@ -92,6 +97,99 @@ final class TimerViewModel {
 
     var progressPercentage: Double {
         timerService.progressPercentage
+    }
+
+    // MARK: - Smart Timer Features
+
+    /// Time remaining until expected end
+    var timeRemaining: TimeInterval {
+        let expectedDuration = TimeInterval(debateSession.speechTimeSeconds)
+        return max(0, expectedDuration - elapsedTime)
+    }
+
+    /// Warning state based on time remaining
+    enum WarningLevel {
+        case none
+        case oneMinute      // 60 seconds remaining
+        case thirtySeconds  // 30 seconds remaining
+        case fifteenSeconds // 15 seconds remaining
+    }
+
+    var currentWarningLevel: WarningLevel {
+        if isOvertime {
+            return .none
+        }
+
+        let remaining = timeRemaining
+        if remaining <= 15 {
+            return .fifteenSeconds
+        } else if remaining <= 30 {
+            return .thirtySeconds
+        } else if remaining <= 60 {
+            return .oneMinute
+        } else {
+            return .none
+        }
+    }
+
+    /// Average speech time from completed recordings
+    var averageSpeechTime: TimeInterval? {
+        guard !recordings.isEmpty else { return nil }
+        let total = recordings.reduce(0) { $0 + TimeInterval($1.durationSeconds) }
+        return total / Double(recordings.count)
+    }
+
+    var formattedAverageSpeechTime: String? {
+        guard let avg = averageSpeechTime else { return nil }
+        let minutes = Int(avg) / 60
+        let seconds = Int(avg) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    /// Predicted total debate duration based on average
+    var predictedTotalDuration: TimeInterval? {
+        guard let avg = averageSpeechTime else { return nil }
+        return avg * Double(speakers.count)
+    }
+
+    var formattedPredictedDuration: String? {
+        guard let total = predictedTotalDuration else { return nil }
+        let minutes = Int(total) / 60
+        let seconds = Int(total) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    /// Check and fire warnings with haptic feedback
+    func checkAndFireWarnings() {
+        guard isRecording && !isOvertime else {
+            // Reset warning flags when not recording or in overtime
+            if !isRecording {
+                has60sWarningFired = false
+                has30sWarningFired = false
+                has15sWarningFired = false
+            }
+            return
+        }
+
+        switch currentWarningLevel {
+        case .oneMinute:
+            if !has60sWarningFired {
+                HapticManager.shared.warning()
+                has60sWarningFired = true
+            }
+        case .thirtySeconds:
+            if !has30sWarningFired {
+                HapticManager.shared.warning()
+                has30sWarningFired = true
+            }
+        case .fifteenSeconds:
+            if !has15sWarningFired {
+                HapticManager.shared.warning()
+                has15sWarningFired = true
+            }
+        case .none:
+            break
+        }
     }
 
     func startTimer() {
@@ -186,6 +284,11 @@ final class TimerViewModel {
 
         currentSpeakerIndex += 1
         timerService.reset()
+
+        // Reset warning flags for new speaker
+        has60sWarningFired = false
+        has30sWarningFired = false
+        has15sWarningFired = false
     }
 
     func previousSpeaker() {
@@ -193,6 +296,11 @@ final class TimerViewModel {
 
         currentSpeakerIndex -= 1
         timerService.reset()
+
+        // Reset warning flags for new speaker
+        has60sWarningFired = false
+        has30sWarningFired = false
+        has15sWarningFired = false
     }
 
     // MARK: - Upload Management

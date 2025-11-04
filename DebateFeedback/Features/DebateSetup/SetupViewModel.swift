@@ -49,6 +49,11 @@ final class SetupViewModel {
     var selectedClassId: String?
     var availableAlternatives: [ScheduleAlternative] = []
 
+    // Toast notification state
+    var showToast = false
+    var toastMessage = ""
+    var toastType: ToastView.ToastType = .success
+
     @ObservationIgnored private var hasLoadedSchedule = false
     @ObservationIgnored private var lastReplyTimeSeconds: Int?
     @ObservationIgnored private var cachedTeacher: Teacher?
@@ -176,6 +181,35 @@ final class SetupViewModel {
         let student = Student(name: newStudentName, level: studentLevel)
         students.append(student)
         newStudentName = ""
+
+        // Show success toast
+        showSuccessToast("Student added")
+
+        // Haptic feedback
+        HapticManager.shared.medium()
+    }
+
+    // MARK: - Toast Helpers
+
+    func showSuccessToast(_ message: String) {
+        toastMessage = message
+        toastType = .success
+        showToast = true
+
+        // Auto-hide after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            self?.showToast = false
+        }
+    }
+
+    func showErrorToast(_ message: String) {
+        toastMessage = message
+        toastType = .error
+        showToast = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.showToast = false
+        }
     }
 
     func removeStudent(_ student: Student) {
@@ -245,6 +279,64 @@ final class SetupViewModel {
     }
 
     // MARK: - Validation
+
+    // Real-time validation properties for inline feedback
+    var motionValidationMessage: String {
+        let count = motion.count
+        if count == 0 {
+            return ""
+        } else if count < Constants.Validation.minimumMotionLength {
+            return "Motion is too short (min 5 characters)"
+        } else if count > Constants.Validation.maximumMotionLength {
+            return "Motion is too long (max 200 characters)"
+        }
+        return ""
+    }
+
+    var isMotionValid: Bool {
+        motion.isValidMotion
+    }
+
+    var motionCharCount: Int {
+        motion.count
+    }
+
+    var motionBorderColor: Color {
+        if motion.isEmpty {
+            return Constants.Colors.textTertiary.opacity(0.3)
+        }
+        return isMotionValid ? Constants.Colors.complete.opacity(0.5) : Constants.Colors.failed.opacity(0.5)
+    }
+
+    var motionCharCountColor: Color {
+        let count = motion.count
+        if count == 0 {
+            return Constants.Colors.textSecondary
+        } else if count < Constants.Validation.minimumMotionLength {
+            return Constants.Colors.failed
+        } else if count > Constants.Validation.maximumMotionLength {
+            return Constants.Colors.failed
+        } else if count > 180 {
+            return Constants.Colors.warning
+        }
+        return Constants.Colors.complete
+    }
+
+    var studentNameValidationMessage: String {
+        let count = newStudentName.count
+        if count == 0 {
+            return ""
+        } else if count < Constants.Validation.minimumSpeakerName {
+            return "Name is too short (min 2 characters)"
+        } else if count > Constants.Validation.maximumSpeakerName {
+            return "Name is too long (max 50 characters)"
+        }
+        return ""
+    }
+
+    var isStudentNameValid: Bool {
+        newStudentName.isValidSpeakerName
+    }
 
     private func validateBasicInfo() -> Bool {
         guard motion.isValidMotion else {

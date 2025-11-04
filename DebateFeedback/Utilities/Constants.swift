@@ -46,11 +46,39 @@ enum Constants {
 
     // MARK: - UI Colors
     enum Colors {
+        // MARK: Light Mode Colors
+
         // Background colors - Light clean theme
-        static let backgroundLight = Color.white // Pure white
-        static let backgroundSecondary = Color(red: 0.98, green: 0.98, blue: 0.99) // #fafafe - Very light gray
-        static let backgroundTertiary = Color(red: 0.95, green: 0.96, blue: 0.98) // #f2f4f9 - Light blue-gray
-        static let cardBackground = Color.white // White cards with shadows
+        static let lightBackgroundPrimary = Color.white // Pure white
+        static let lightBackgroundSecondary = Color(red: 0.98, green: 0.98, blue: 0.99) // #fafafe - Very light gray
+        static let lightBackgroundTertiary = Color(red: 0.95, green: 0.96, blue: 0.98) // #f2f4f9 - Light blue-gray
+        static let lightCardBackground = Color.white // White cards with shadows
+
+        // MARK: Dark Mode Colors
+
+        // Background colors - Dark theme
+        static let darkBackgroundPrimary = Color(red: 0.11, green: 0.11, blue: 0.12) // #1c1c1f - Almost black
+        static let darkBackgroundSecondary = Color(red: 0.16, green: 0.16, blue: 0.18) // #28282e - Dark gray
+        static let darkBackgroundTertiary = Color(red: 0.20, green: 0.20, blue: 0.22) // #333338 - Lighter dark gray
+        static let darkCardBackground = Color(red: 0.16, green: 0.16, blue: 0.18) // #28282e - Card background
+
+        // MARK: Adaptive Colors (switch based on color scheme)
+
+        static var backgroundLight: Color {
+            Color.adaptiveColor(light: lightBackgroundPrimary, dark: darkBackgroundPrimary)
+        }
+
+        static var backgroundSecondary: Color {
+            Color.adaptiveColor(light: lightBackgroundSecondary, dark: darkBackgroundSecondary)
+        }
+
+        static var backgroundTertiary: Color {
+            Color.adaptiveColor(light: lightBackgroundTertiary, dark: darkBackgroundTertiary)
+        }
+
+        static var cardBackground: Color {
+            Color.adaptiveColor(light: lightCardBackground, dark: darkCardBackground)
+        }
 
         // Mascot-inspired colors (from Ollie the Owl)
         static let mascotNavy = Color(red: 0.12, green: 0.23, blue: 0.37) // #1e3a5f - Navy blue
@@ -78,12 +106,34 @@ enum Constants {
         static let warning = Color(red: 1.0, green: 0.85, blue: 0.60) // Soft orange
         static let error = Color(red: 1.0, green: 0.70, blue: 0.70) // Soft red
 
-        // Text colors for light theme
-        static let textPrimary = Color(red: 0.12, green: 0.12, blue: 0.15) // #1e1e26 - Almost black
-        static let textSecondary = Color(red: 0.45, green: 0.45, blue: 0.50) // #737380 - Medium gray
-        static let textTertiary = Color(red: 0.65, green: 0.65, blue: 0.70) // #a6a6b3 - Light gray
+        // Text colors - Light mode
+        static let lightTextPrimary = Color(red: 0.12, green: 0.12, blue: 0.15) // #1e1e26 - Almost black
+        static let lightTextSecondary = Color(red: 0.45, green: 0.45, blue: 0.50) // #737380 - Medium gray
+        static let lightTextTertiary = Color(red: 0.65, green: 0.65, blue: 0.70) // #a6a6b3 - Light gray
+
+        // Text colors - Dark mode
+        static let darkTextPrimary = Color(red: 0.95, green: 0.95, blue: 0.97) // #f2f2f7 - Almost white
+        static let darkTextSecondary = Color(red: 0.60, green: 0.60, blue: 0.65) // #99999a - Medium gray
+        static let darkTextTertiary = Color(red: 0.40, green: 0.40, blue: 0.45) // #666673 - Dark gray
+
+        // Adaptive text colors
+        static var textPrimary: Color {
+            Color.adaptiveColor(light: lightTextPrimary, dark: darkTextPrimary)
+        }
+
+        static var textSecondary: Color {
+            Color.adaptiveColor(light: lightTextSecondary, dark: darkTextSecondary)
+        }
+
+        static var textTertiary: Color {
+            Color.adaptiveColor(light: lightTextTertiary, dark: darkTextTertiary)
+        }
+
         static let textOnButton = Color.white // White text on colored buttons
-        static let textOnCard = textPrimary // Dark text on white cards
+
+        static var textOnCard: Color {
+            textPrimary // Adapts with textPrimary
+        }
 
         // Team colors - soft pastels
         static let propTeam = softCyan
@@ -158,6 +208,35 @@ enum Constants {
         static let spring = SwiftUI.Animation.spring(response: 0.5, dampingFraction: 0.7)
     }
 
+    // MARK: - Theme Configuration
+    enum Theme: String, CaseIterable {
+        case light
+        case dark
+        case system
+
+        var displayName: String {
+            switch self {
+            case .light:
+                return "Light"
+            case .dark:
+                return "Dark"
+            case .system:
+                return "System"
+            }
+        }
+
+        var colorScheme: ColorScheme? {
+            switch self {
+            case .light:
+                return .light
+            case .dark:
+                return .dark
+            case .system:
+                return nil
+            }
+        }
+    }
+
     // MARK: - User Defaults Keys
     enum UserDefaultsKeys {
         static let deviceId = "com.debatefeedback.deviceId"
@@ -165,6 +244,7 @@ enum Constants {
         static let currentTeacherId = "com.debatefeedback.teacherId"
         static let isGuestMode = "com.debatefeedback.isGuestMode"
         static let hasShownOnboarding = "com.debatefeedback.hasShownOnboarding"
+        static let themePreference = "com.debatefeedback.themePreference"
     }
 
     // MARK: - File Management
@@ -206,5 +286,22 @@ extension Constants {
 
     static var timerFontSize: CGFloat {
         isIPad ? Sizing.timerFontSizeiPad : Sizing.timerFontSizeiPhone
+    }
+}
+
+// MARK: - Color Extension for Adaptive Colors
+extension Color {
+    /// Creates a color that adapts to the current color scheme
+    static func adaptiveColor(light: Color, dark: Color) -> Color {
+        Color(UIColor { traitCollection in
+            switch traitCollection.userInterfaceStyle {
+            case .dark:
+                return UIColor(dark)
+            case .light, .unspecified:
+                return UIColor(light)
+            @unknown default:
+                return UIColor(light)
+            }
+        })
     }
 }

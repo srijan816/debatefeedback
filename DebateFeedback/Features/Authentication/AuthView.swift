@@ -62,6 +62,7 @@ struct AuthView: View {
                             )
 
                         Button {
+                            HapticManager.shared.light()
                             Task {
                                 await viewModel.loginAsTeacher()
                             }
@@ -79,6 +80,8 @@ struct AuthView: View {
                         }
                         .gradientButtonStyle(isEnabled: !viewModel.teacherName.isEmpty && !viewModel.isLoading)
                         .disabled(viewModel.teacherName.isEmpty || viewModel.isLoading)
+                        .accessibilityLabel("Login as teacher button")
+                        .accessibilityHint("Sign in with your teacher account to access full features")
                     }
 
                     // Divider
@@ -96,6 +99,7 @@ struct AuthView: View {
 
                     // Guest Login
                     Button {
+                        HapticManager.shared.light()
                         viewModel.loginAsGuest()
                     } label: {
                         Text("Continue as Guest")
@@ -111,6 +115,8 @@ struct AuthView: View {
                             )
                     }
                     .disabled(viewModel.isLoading)
+                    .accessibilityLabel("Continue as guest button")
+                    .accessibilityHint("Use the app with limited features and no history")
 
                     // Guest Mode Info
                     HStack(spacing: 6) {
@@ -133,7 +139,7 @@ struct AuthView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
         .alert("Error", isPresented: $viewModel.showError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -141,6 +147,7 @@ struct AuthView: View {
         }
         .onChange(of: viewModel.isAuthenticated) { _, authenticated in
             if authenticated {
+                HapticManager.shared.success()
                 if let teacher = viewModel.authenticatedTeacher {
                     coordinator.loginAsTeacher(teacher)
                 } else {
