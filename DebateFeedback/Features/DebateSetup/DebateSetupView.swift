@@ -885,6 +885,7 @@ struct DebateSetupView: View {
 
 struct StudentChip: View {
     let student: Student
+    @State private var isDragging = false
 
     var body: some View {
         Text(student.name)
@@ -895,8 +896,18 @@ struct StudentChip: View {
             .background(Constants.Gradients.secondaryButton)
             .foregroundColor(.white)
             .cornerRadius(20)
-            .shadow(color: Constants.Colors.softPink.opacity(0.3), radius: 8, x: 0, y: 4)
+            .shadow(
+                color: isDragging ? Constants.Colors.softPink.opacity(0.6) : Constants.Colors.softPink.opacity(0.3),
+                radius: isDragging ? 12 : 8,
+                x: 0,
+                y: isDragging ? 8 : 4
+            )
+            .scaleEffect(isDragging ? 1.05 : 1.0)
+            .opacity(isDragging ? 0.8 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
             .draggable(student.id.uuidString)
+            .accessibilityLabel("Student chip: \(student.name)")
+            .accessibilityHint("Drag to assign to a team")
     }
 }
 
@@ -907,6 +918,8 @@ struct TeamDropZone: View {
     let color: Color
     let onDrop: (Student) -> Void
     let onRemove: (Student) -> Void
+
+    @State private var isTargeted = false
 
     private var gradient: LinearGradient {
         if title.contains("Prop") || title.contains("Government") || title == "OG" || title == "CG" {
@@ -947,26 +960,32 @@ struct TeamDropZone: View {
                             .foregroundColor(Constants.Colors.textPrimary)
                         Spacer()
                         Button {
+                            HapticManager.shared.light()
                             onRemove(student)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.caption)
                                 .foregroundColor(Constants.Colors.softPink)
                         }
+                        .accessibilityLabel("Remove \(student.name)")
+                        .accessibilityHint("Remove student from this team")
                     }
                     .padding(10)
                     .background(Constants.Colors.backgroundSecondary)
                     .cornerRadius(10)
+                    .transition(.scale.combined(with: .opacity))
                 }
 
                 if students.isEmpty {
                     VStack(spacing: 8) {
-                        Image(systemName: "arrow.down.circle.dotted")
+                        Image(systemName: isTargeted ? "arrow.down.circle.fill" : "arrow.down.circle.dotted")
                             .font(.title)
                             .foregroundStyle(gradient)
-                        Text("Drop to add")
+                            .symbolEffect(.bounce, value: isTargeted)
+                        Text(isTargeted ? "Drop here" : "Drop to add")
                             .font(.caption)
-                            .foregroundColor(Constants.Colors.textSecondary)
+                            .fontWeight(isTargeted ? .semibold : .regular)
+                            .foregroundColor(isTargeted ? Constants.Colors.textPrimary : Constants.Colors.textSecondary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 30)
@@ -974,16 +993,46 @@ struct TeamDropZone: View {
             }
             .frame(maxWidth: .infinity, minHeight: 150)
             .padding()
-            .glassmorphism(borderColor: borderColor)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Constants.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(
+                                isTargeted ? borderColor : borderColor.opacity(0.4),
+                                lineWidth: isTargeted ? 3 : 1.5
+                            )
+                            .animation(.easeInOut(duration: 0.2), value: isTargeted)
+                    )
+                    .shadow(
+                        color: isTargeted ? borderColor.opacity(0.3) : Color.black.opacity(0.08),
+                        radius: isTargeted ? 16 : 12,
+                        x: 0,
+                        y: 4
+                    )
+            )
+            .scaleEffect(isTargeted ? 1.02 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTargeted)
             .dropDestination(for: String.self) { items, location in
                 guard let studentIdString = items.first,
                       let studentId = UUID(uuidString: studentIdString),
                       let student = allStudents.first(where: { $0.id == studentId })
                 else { return false }
 
+                // Haptic feedback on successful drop
+                HapticManager.shared.medium()
+
+                // Call the drop handler
                 onDrop(student)
+
                 return true
+            } isTargeted: { targeted in
+                withAnimation {
+                    isTargeted = targeted
+                }
             }
+            .accessibilityLabel("\(title) team drop zone")
+            .accessibilityHint("Drop students here to assign them to \(title)")
         }
     }
 }

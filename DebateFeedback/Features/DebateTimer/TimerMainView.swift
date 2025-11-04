@@ -144,8 +144,14 @@ struct TimerMainView: View {
 
     private func timerDisplay(viewModel: TimerViewModel) -> some View {
         VStack(spacing: 24) {
-            // Simple timer display
+            // Timer display with warnings
             VStack(spacing: 16) {
+                // Warning indicator
+                if viewModel.isRecording && !viewModel.isOvertime {
+                    warningIndicator(for: viewModel)
+                        .transition(.opacity.combined(with: .scale))
+                }
+
                 // Timer
                 HStack(spacing: 16) {
                     Spacer()
@@ -155,10 +161,14 @@ struct TimerMainView: View {
                         .foregroundColor(viewModel.isOvertime ? .red : Constants.Colors.textPrimary)
                         .accessibilityLabel("Timer")
                         .accessibilityValue("\(viewModel.formattedTime)\(viewModel.isOvertime ? ", overtime" : "")")
+                        .onChange(of: viewModel.elapsedTime) { _, _ in
+                            viewModel.checkAndFireWarnings()
+                        }
 
                     // Bell Icon
                     if viewModel.isRecording {
                         Button {
+                            HapticManager.shared.light()
                             viewModel.ringBell()
                         } label: {
                             Image(systemName: "bell.fill")
@@ -167,6 +177,8 @@ struct TimerMainView: View {
                                 .symbolEffect(.bounce, value: viewModel.elapsedTime)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Ring bell")
+                        .accessibilityHint("Manually ring the bell")
                     }
 
                     Spacer()
@@ -186,6 +198,33 @@ struct TimerMainView: View {
                 }
                 .frame(height: 10)
                 .padding(.horizontal, 40)
+
+                // Statistics below timer
+                if let avgTime = viewModel.formattedAverageSpeechTime,
+                   let predicted = viewModel.formattedPredictedDuration {
+                    HStack(spacing: 32) {
+                        VStack(spacing: 4) {
+                            Text("Average Time")
+                                .font(.caption2)
+                                .foregroundColor(Constants.Colors.textSecondary)
+                            Text(avgTime)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Constants.Colors.textPrimary)
+                        }
+
+                        VStack(spacing: 4) {
+                            Text("Predicted Total")
+                                .font(.caption2)
+                                .foregroundColor(Constants.Colors.textSecondary)
+                            Text(predicted)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Constants.Colors.textPrimary)
+                        }
+                    }
+                    .padding(.top, 8)
+                }
             }
             .padding(24)
             .softCard(backgroundColor: Constants.Colors.cardBackground, borderColor: nil, cornerRadius: 20)
@@ -204,6 +243,66 @@ struct TimerMainView: View {
                         .foregroundColor(Constants.Colors.textPrimary)
                 }
             }
+        }
+    }
+
+    // MARK: - Warning Indicator
+
+    @ViewBuilder
+    private func warningIndicator(for viewModel: TimerViewModel) -> some View {
+        let level = viewModel.currentWarningLevel
+
+        switch level {
+        case .oneMinute:
+            HStack(spacing: 8) {
+                Image(systemName: "clock.badge.exclamationmark")
+                    .foregroundColor(.orange)
+                    .symbolEffect(.pulse, options: .repeating)
+                Text("1 minute remaining")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.orange)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(20)
+            .accessibilityLabel("Warning: 1 minute remaining")
+
+        case .thirtySeconds:
+            HStack(spacing: 8) {
+                Image(systemName: "clock.badge.exclamationmark.fill")
+                    .foregroundColor(.red)
+                    .symbolEffect(.pulse, options: .repeating)
+                Text("30 seconds remaining")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.red)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.red.opacity(0.1))
+            .cornerRadius(20)
+            .accessibilityLabel("Warning: 30 seconds remaining")
+
+        case .fifteenSeconds:
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+                    .symbolEffect(.pulse, options: .repeating)
+                Text("15 seconds remaining!")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.red)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.red.opacity(0.15))
+            .cornerRadius(20)
+            .accessibilityLabel("Critical warning: 15 seconds remaining")
+
+        case .none:
+            EmptyView()
         }
     }
 
