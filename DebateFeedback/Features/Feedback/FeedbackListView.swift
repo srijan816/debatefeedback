@@ -68,6 +68,7 @@ struct FeedbackListView: View {
                 .accessibilityHint("Return to home screen")
             }
         }
+        .subtleBoundaryEffects(showTopEdge: true, showBottomEdge: true, intensity: 0.06)
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
     }
 

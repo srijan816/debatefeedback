@@ -86,9 +86,8 @@ final class AudioRecordingService: NSObject {
         recorder.stop()
         isRecording = false
 
-        let asset = AVURLAsset(url: url)
-        let assetDuration = CMTimeGetSeconds(asset.duration)
-        let duration = max(recorder.currentTime, assetDuration)
+        // Use recorder's current time as the duration
+        let duration = recorder.currentTime
         recordingDuration = duration
 
         currentRecordingURL = nil

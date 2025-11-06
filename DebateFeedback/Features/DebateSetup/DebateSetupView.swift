@@ -67,6 +67,7 @@ struct DebateSetupView: View {
                 Text(viewModel.errorMessage)
             }
         }
+        .subtleBoundaryEffects(showTopEdge: true, showBottomEdge: true, intensity: 0.05)
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
         .toast(
             isShowing: $viewModel.showToast,

@@ -210,3 +210,148 @@ struct GradientToggleStyle: ToggleStyle {
         }
     }
 }
+
+// MARK: - Subtle Accent Card (with gradient bottom border)
+
+struct AccentCardModifier: ViewModifier {
+    let backgroundColor: Color
+    let showAccent: Bool
+    let cornerRadius: CGFloat
+
+    init(backgroundColor: Color = Constants.Colors.cardBackground, showAccent: Bool = true, cornerRadius: CGFloat = 16) {
+        self.backgroundColor = backgroundColor
+        self.showAccent = showAccent
+        self.cornerRadius = cornerRadius
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(backgroundColor)
+            )
+            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+    }
+}
+
+// MARK: - Glow Effect Modifier
+
+struct GlowModifier: ViewModifier {
+    let color: Color
+    let radius: CGFloat
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .shadow(color: isActive ? color : Color.clear, radius: radius, x: 0, y: 0)
+            .shadow(color: isActive ? color.opacity(0.5) : Color.clear, radius: radius * 0.5, x: 0, y: 0)
+    }
+}
+
+// MARK: - Gradient Border Modifier
+
+struct GradientBorderModifier: ViewModifier {
+    let gradient: LinearGradient
+    let lineWidth: CGFloat
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(gradient, lineWidth: lineWidth)
+            )
+    }
+}
+
+// MARK: - Icon Gradient Modifier
+
+struct IconGradientModifier: ViewModifier {
+    let gradient: LinearGradient
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(gradient)
+    }
+}
+
+// MARK: - Subtle Boundary Effects
+
+struct SubtleBoundaryOverlay: View {
+    let showTopEdge: Bool
+    let showBottomEdge: Bool
+    let intensity: Double
+
+    init(showTopEdge: Bool = true, showBottomEdge: Bool = true, intensity: Double = 0.15) {
+        self.showTopEdge = showTopEdge
+        self.showBottomEdge = showBottomEdge
+        self.intensity = intensity
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Top edge gradient
+            if showTopEdge {
+                LinearGradient(
+                    colors: [
+                        Constants.Colors.softCyan.opacity(intensity),
+                        Constants.Colors.softPurple.opacity(intensity * 0.7),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 80)
+                .allowsHitTesting(false)
+            }
+
+            Spacer()
+
+            // Bottom edge gradient
+            if showBottomEdge {
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        Constants.Colors.softPurple.opacity(intensity * 0.7),
+                        Constants.Colors.softPink.opacity(intensity)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 80)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
+// MARK: - Enhanced View Extensions
+
+extension View {
+    /// Apply subtle gradient overlay on screen boundaries (top and/or bottom edges)
+    func subtleBoundaryEffects(showTopEdge: Bool = true, showBottomEdge: Bool = true, intensity: Double = 0.08) -> some View {
+        self.overlay(
+            SubtleBoundaryOverlay(showTopEdge: showTopEdge, showBottomEdge: showBottomEdge, intensity: intensity)
+        )
+    }
+
+    /// Apply card with subtle gradient accent on bottom
+    func accentCard(backgroundColor: Color = Constants.Colors.cardBackground, showAccent: Bool = true, cornerRadius: CGFloat = 16) -> some View {
+        self.modifier(AccentCardModifier(backgroundColor: backgroundColor, showAccent: showAccent, cornerRadius: cornerRadius))
+    }
+
+    /// Apply colored glow effect (for recording, warnings, etc.)
+    func glow(color: Color, radius: CGFloat = 12, isActive: Bool = true) -> some View {
+        self.modifier(GlowModifier(color: color, radius: radius, isActive: isActive))
+    }
+
+    /// Apply gradient border
+    func gradientBorder(gradient: LinearGradient = Constants.Gradients.primaryButton, lineWidth: CGFloat = 1.5, cornerRadius: CGFloat = 16) -> some View {
+        self.modifier(GradientBorderModifier(gradient: gradient, lineWidth: lineWidth, cornerRadius: cornerRadius))
+    }
+
+    /// Apply gradient to SF Symbol icons
+    func iconGradient(_ gradient: LinearGradient = Constants.Gradients.primaryButton) -> some View {
+        self.modifier(IconGradientModifier(gradient: gradient))
+    }
+}

@@ -90,6 +90,7 @@ struct TimerMainView: View {
                 }
             }
         }
+        .subtleBoundaryEffects(showTopEdge: false, showBottomEdge: true, intensity: 0.07)
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
     }
 

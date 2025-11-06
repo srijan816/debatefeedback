@@ -244,7 +244,7 @@ struct FeedbackDetailView: View {
 
             // Cache the feedback content
             recording.feedbackContent = feedbackContent
-            try? await MainActor.run {
+            await MainActor.run {
                 // Save to database if we have access to context
                 // Note: This would require passing ModelContext to this view
             }
@@ -331,11 +331,8 @@ struct WebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let preferences = WKPreferences()
-        preferences.javaScriptEnabled = true
-
         let configuration = WKWebViewConfiguration()
-        configuration.preferences = preferences
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.allowsInlineMediaPlayback = true
 
         let webView = WKWebView(frame: .zero, configuration: configuration)

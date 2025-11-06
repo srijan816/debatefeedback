@@ -25,7 +25,7 @@ struct HistoryListView: View {
     private var filteredSessions: [DebateSession] {
         allSessions.filter { session in
             let matchesSearch = searchText.isEmpty || session.motion.localizedCaseInsensitiveContains(searchText) ||
-                session.students.contains(where: { $0.name.localizedCaseInsensitiveContains(searchText) })
+                (session.students?.contains(where: { $0.name.localizedCaseInsensitiveContains(searchText) }) ?? false)
 
             let matchesFormat = selectedFormat == nil || session.format == selectedFormat
             let matchesLevel = selectedLevel == nil || session.studentLevel == selectedLevel
@@ -69,6 +69,7 @@ struct HistoryListView: View {
         } message: {
             Text("Are you sure you want to delete this debate session? This action cannot be undone.")
         }
+        .subtleBoundaryEffects(showTopEdge: true, showBottomEdge: true, intensity: 0.06)
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
     }
 
@@ -283,15 +284,17 @@ struct HistoryListView: View {
     private var totalUniqueStudents: Int {
         var studentNames = Set<String>()
         for session in allSessions {
-            for student in session.students {
-                studentNames.insert(student.name)
+            if let students = session.students {
+                for student in students {
+                    studentNames.insert(student.name)
+                }
             }
         }
         return studentNames.count
     }
 
     private var totalRecordings: Int {
-        allSessions.reduce(0) { $0 + $1.recordings.count }
+        allSessions.reduce(0) { $0 + ($1.speechRecordings?.count ?? 0) }
     }
 
     // MARK: - Actions
@@ -313,11 +316,15 @@ struct HistoryListView: View {
         HapticManager.shared.medium()
 
         // Delete all related recordings and students
-        for recording in session.recordings {
-            modelContext.delete(recording)
+        if let recordings = session.speechRecordings {
+            for recording in recordings {
+                modelContext.delete(recording)
+            }
         }
-        for student in session.students {
-            modelContext.delete(student)
+        if let students = session.students {
+            for student in students {
+                modelContext.delete(student)
+            }
         }
 
         modelContext.delete(session)
@@ -338,9 +345,9 @@ struct HistoryCard: View {
     let session: DebateSession
 
     private var completionRate: Double {
-        guard !session.recordings.isEmpty else { return 0 }
-        let completed = session.recordings.filter { $0.processingStatus == .complete }.count
-        return Double(completed) / Double(session.recordings.count)
+        guard let recordings = session.speechRecordings, !recordings.isEmpty else { return 0 }
+        let completed = recordings.filter { $0.processingStatus == .complete }.count
+        return Double(completed) / Double(recordings.count)
     }
 
     var body: some View {
@@ -362,17 +369,15 @@ struct HistoryCard: View {
                     .font(.caption)
                     .foregroundColor(Constants.Colors.textSecondary)
 
-                if let date = session.createdAt {
-                    Label(formattedDate(date), systemImage: "calendar")
-                        .font(.caption)
-                        .foregroundColor(Constants.Colors.textSecondary)
-                }
+                Label(formattedDate(session.createdAt), systemImage: "calendar")
+                    .font(.caption)
+                    .foregroundColor(Constants.Colors.textSecondary)
             }
 
             // Stats
             HStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(session.recordings.count)")
+                    Text("\(session.speechRecordings?.count ?? 0)")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(Constants.Colors.primaryBlue)
