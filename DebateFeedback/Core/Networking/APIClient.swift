@@ -74,7 +74,9 @@ actor APIClient {
             }
 
             do {
-                let decoded = try JSONDecoder().decode(T.self, from: data)
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let decoded = try decoder.decode(T.self, from: data)
                 return decoded
             } catch {
                 throw NetworkError.decodingError
@@ -142,7 +144,9 @@ actor APIClient {
                 throw NetworkError.serverError(statusCode: httpResponse.statusCode)
             }
 
-            let decoded = try JSONDecoder().decode(UploadResponse.self, from: data)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let decoded = try decoder.decode(UploadResponse.self, from: data)
             return decoded
 
         } catch let error as NetworkError {
@@ -202,19 +206,73 @@ actor APIClient {
 
         case .getCurrentSchedule(_, _, let classId):
             let primaryClassId = classId ?? UUID().uuidString
+            let mockStudents = [
+                StudentResponse(id: UUID().uuidString, name: "Alice Smith", level: "secondary", grade: "9"),
+                StudentResponse(id: UUID().uuidString, name: "Bob Johnson", level: "secondary", grade: "10"),
+                StudentResponse(id: UUID().uuidString, name: "Carol White", level: "secondary", grade: "9")
+            ]
             let response = ScheduleResponse(
                 classId: primaryClassId,
-                students: [
-                    StudentResponse(id: UUID().uuidString, name: "Alice Smith", level: "secondary"),
-                    StudentResponse(id: UUID().uuidString, name: "Bob Johnson", level: "secondary"),
-                    StudentResponse(id: UUID().uuidString, name: "Carol White", level: "secondary")
-                ],
+                students: mockStudents,
                 suggestedMotion: "This house believes that social media does more harm than good",
                 format: "WSDC",
                 speechTime: 300,
                 alternatives: [
-                    ScheduleAlternative(classId: primaryClassId + "-ALT1", startTime: "18:00"),
-                    ScheduleAlternative(classId: primaryClassId + "-ALT2", startTime: "20:00")
+                    ScheduleAlternative(
+                        classId: primaryClassId + "-ALT1",
+                        startTime: "18:00",
+                        startDateTime: "2025-11-08T18:00:00.000Z" // Friday 6:00 PM
+                    ),
+                    ScheduleAlternative(
+                        classId: primaryClassId + "-ALT2",
+                        startTime: "20:00",
+                        startDateTime: "2025-11-08T20:00:00.000Z" // Friday 8:00 PM
+                    )
+                ],
+                startDateTime: "2025-11-08T16:30:00.000Z", // Friday 4:30 PM for the main class
+                availableClasses: [
+                    ScheduleResponse.ClassInfo(
+                        classId: primaryClassId,
+                        scheduleId: "sched-001",
+                        source: "teacher",
+                        displayLabel: "Friday 4:30 PM",
+                        dayOfWeek: 5,
+                        dayName: "Friday",
+                        startTime: "16:30",
+                        endTime: "18:00",
+                        format: "WSDC",
+                        speechTime: 300,
+                        suggestedMotion: "This house believes that social media does more harm than good",
+                        students: mockStudents
+                    ),
+                    ScheduleResponse.ClassInfo(
+                        classId: primaryClassId + "-ALT1",
+                        scheduleId: "sched-002",
+                        source: "teacher",
+                        displayLabel: "Friday 6:00 PM",
+                        dayOfWeek: 5,
+                        dayName: "Friday",
+                        startTime: "18:00",
+                        endTime: "19:30",
+                        format: "BP",
+                        speechTime: 420,
+                        suggestedMotion: "This house would ban single-use plastics",
+                        students: mockStudents.shuffled()
+                    ),
+                    ScheduleResponse.ClassInfo(
+                        classId: primaryClassId + "-SAT",
+                        scheduleId: "sched-003",
+                        source: "teacher",
+                        displayLabel: "Saturday 1:00 PM",
+                        dayOfWeek: 6,
+                        dayName: "Saturday",
+                        startTime: "13:00",
+                        endTime: "14:30",
+                        format: "AP",
+                        speechTime: 360,
+                        suggestedMotion: nil,
+                        students: mockStudents
+                    )
                 ]
             )
             return response as! T
@@ -262,17 +320,227 @@ struct ScheduleResponse: Codable {
     let format: String
     let speechTime: Int
     let alternatives: [ScheduleAlternative]?
+    let startDateTime: String? // Full ISO8601 datetime for the main class
+    let availableClasses: [ClassInfo]?
+
+    /// Returns formatted display string for the main class
+    var classDisplayString: String {
+        let dayTime = formattedDayTime()
+        if dayTime == classId {
+            return classId
+        }
+        return "\(dayTime) - \(classId)"
+    }
+
+    /// Returns just day and time for the main class
+    var classDayTimeString: String {
+        formattedDayTime()
+    }
+
+    private func formattedDayTime() -> String {
+        ClassScheduleFormatter.dayTimeString(
+            classId: classId,
+            startDateTime: startDateTime,
+            fallbackStartTime: nil
+        ) ?? classId
+    }
+
+    struct ClassInfo: Codable {
+        let classId: String
+        let scheduleId: String?
+        let source: String?
+        let displayLabel: String?
+        let dayOfWeek: Int?
+        let dayName: String?
+        let startTime: String?
+        let endTime: String?
+        let format: String?
+        let speechTime: Int?
+        let suggestedMotion: String?
+        let students: [StudentResponse]
+
+        var dayTimeString: String? {
+            if let displayLabel, !displayLabel.isEmpty {
+                return displayLabel
+            }
+
+            return ClassScheduleFormatter.dayTimeString(
+                classId: classId,
+                startDateTime: nil,
+                fallbackStartTime: startTime,
+                explicitDayName: dayName
+            )
+        }
+
+        var displayTitle: String {
+            dayTimeString ?? classId
+        }
+
+        var displaySubtitle: String? {
+            guard dayTimeString != nil else { return nil }
+            return classId
+        }
+
+        static func primaryFallback(from response: ScheduleResponse) -> ClassInfo {
+            ClassInfo(
+                classId: response.classId,
+                scheduleId: nil,
+                source: "primary",
+                displayLabel: response.classDayTimeString == response.classId ? nil : response.classDayTimeString,
+                dayOfWeek: nil,
+                dayName: nil,
+                startTime: nil,
+                endTime: nil,
+                format: response.format,
+                speechTime: response.speechTime,
+                suggestedMotion: response.suggestedMotion,
+                students: response.students
+            )
+        }
+    }
 }
 
 struct ScheduleAlternative: Codable, Hashable {
     let classId: String
-    let startTime: String
+    let startTime: String // Keep for backward compatibility
+    let startDateTime: String? // Full ISO8601 datetime from backend
+
+    /// Returns formatted display string like "Friday 4:30 PM - BEG-FRI-1430"
+    var displayString: String {
+        let dayTimeString = formattedDayTime()
+        if dayTimeString == classId {
+            return classId
+        }
+        return "\(dayTimeString) - \(classId)"
+    }
+
+    /// Returns just the day and time portion like "Friday 4:30 PM"
+    var dayTimeString: String {
+        formattedDayTime()
+    }
+
+    private func formattedDayTime() -> String {
+        ClassScheduleFormatter.dayTimeString(
+            classId: classId,
+            startDateTime: startDateTime,
+            fallbackStartTime: startTime
+        ) ?? classId
+    }
+}
+
+// MARK: - Schedule Formatting Helpers
+
+fileprivate enum ClassScheduleFormatter {
+    static func dayTimeString(
+        classId: String,
+        startDateTime: String?,
+        fallbackStartTime: String?,
+        explicitDayName: String? = nil
+    ) -> String? {
+        if let startDateTime,
+           let date = Date.from(iso8601String: startDateTime) {
+            return formattedDayTime(from: date)
+        }
+
+        let day = explicitDayName ?? dayName(fromClassId: classId)
+        let time = formattedTime(fromExplicit: fallbackStartTime) ?? formattedTime(fromClassId: classId)
+
+        switch (day, time) {
+        case let (day?, time?):
+            return "\(day) \(time)"
+        case let (day?, nil):
+            return day
+        case let (nil, time?):
+            return time
+        default:
+            return nil
+        }
+    }
+
+    private static func formattedDayTime(from date: Date) -> String {
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "EEEE"
+        let day = dayFormatter.string(from: date)
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "h:mm a"
+        let time = timeFormatter.string(from: date)
+
+        return "\(day) \(time)"
+    }
+
+    private static func dayName(fromClassId classId: String) -> String? {
+        let components = classId.split(separator: "-")
+        for component in components {
+            let upper = component.uppercased()
+            if let fullName = dayLookup[upper] {
+                return fullName
+            }
+        }
+        return nil
+    }
+
+    private static func formattedTime(fromExplicit explicit: String?) -> String? {
+        guard let explicit, !explicit.isEmpty else { return nil }
+
+        if explicit.contains(":") {
+            let parts = explicit.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: true)
+            if parts.count == 2,
+               let hour = Int(parts[0]),
+               let minute = Int(parts[1]) {
+                return formattedTime(hour: hour, minute: minute)
+            }
+        }
+
+        if explicit.count == 4,
+           let hour = Int(explicit.prefix(2)),
+           let minute = Int(explicit.suffix(2)) {
+            return formattedTime(hour: hour, minute: minute)
+        }
+
+        return nil
+    }
+
+    private static func formattedTime(fromClassId classId: String) -> String? {
+        guard let lastComponent = classId.split(separator: "-").last else { return nil }
+        let raw = String(lastComponent)
+        guard raw.count == 4,
+              let hour = Int(raw.prefix(2)),
+              let minute = Int(raw.suffix(2)) else {
+            return nil
+        }
+        return formattedTime(hour: hour, minute: minute)
+    }
+
+    private static func formattedTime(hour: Int, minute: Int) -> String {
+        let period = hour >= 12 ? "PM" : "AM"
+        let normalizedHour: Int
+        if hour == 0 {
+            normalizedHour = 12
+        } else if hour > 12 {
+            normalizedHour = hour - 12
+        } else {
+            normalizedHour = hour
+        }
+        return String(format: "%d:%02d %@", normalizedHour, minute, period)
+    }
+
+    private static let dayLookup: [String: String] = [
+        "MON": "Monday",
+        "TUE": "Tuesday",
+        "WED": "Wednesday",
+        "THU": "Thursday",
+        "FRI": "Friday",
+        "SAT": "Saturday",
+        "SUN": "Sunday"
+    ]
 }
 
 struct StudentResponse: Codable {
     let id: String
     let name: String
     let level: String
+    let grade: String?
 }
 
 struct CreateDebateRequest: Codable {
@@ -281,11 +549,15 @@ struct CreateDebateRequest: Codable {
     let studentLevel: String
     let speechTimeSeconds: Int
     let teams: TeamsData
+    let classId: String?
+    let scheduleId: String?
 
     enum CodingKeys: String, CodingKey {
         case motion, format, teams
         case studentLevel = "student_level"
         case speechTimeSeconds = "speech_time_seconds"
+        case classId = "class_id"
+        case scheduleId = "schedule_id"
     }
 }
 

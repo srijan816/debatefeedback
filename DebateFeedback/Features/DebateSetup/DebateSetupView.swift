@@ -335,14 +335,89 @@ struct DebateSetupView: View {
 
     private var classSelectionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let classId = viewModel.selectedClassId {
+            if !viewModel.classPickerOptions.isEmpty {
+                let selectionBinding = Binding<String?>(
+                    get: { viewModel.selectedClassId },
+                    set: { newValue in
+                        guard let newValue else { return }
+                        viewModel.selectClass(withId: newValue)
+                    }
+                )
+
+                Picker(selection: selectionBinding) {
+                    ForEach(viewModel.classPickerOptions) { option in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(option.title)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Constants.Colors.textPrimary)
+                            if let subtitle = option.subtitle {
+                                Text(subtitle)
+                                    .font(.caption)
+                                    .foregroundColor(Constants.Colors.textSecondary)
+                            }
+                        }
+                        .tag(String?.some(option.id))
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar")
+                            .foregroundColor(Constants.Colors.primaryBlue)
+
+                        if let classId = viewModel.selectedClassId {
+                            if let dayTime = viewModel.selectedClassDayTime {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(dayTime)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(Constants.Colors.textPrimary)
+                                    Text(classId)
+                                        .font(.caption)
+                                        .foregroundColor(Constants.Colors.textSecondary)
+                                }
+                            } else {
+                                Text("Class ID: \(classId)")
+                                    .font(.subheadline)
+                                    .foregroundColor(Constants.Colors.textPrimary)
+                            }
+                        }
+
+                        Spacer()
+
+                        if viewModel.isLoadingSchedule {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+
+                        Image(systemName: "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(Constants.Colors.textSecondary)
+                    }
+                }
+                .pickerStyle(.menu)
+            } else if let classId = viewModel.selectedClassId {
                 HStack(spacing: 8) {
-                    Image(systemName: "building.2")
+                    Image(systemName: "calendar")
                         .foregroundColor(Constants.Colors.primaryBlue)
-                    Text("Class ID: \(classId)")
-                        .font(.subheadline)
-                        .foregroundColor(Constants.Colors.textPrimary)
+
+                    if let dayTime = viewModel.selectedClassDayTime {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(dayTime)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Constants.Colors.textPrimary)
+                            Text(classId)
+                                .font(.caption)
+                                .foregroundColor(Constants.Colors.textSecondary)
+                        }
+                    } else {
+                        Text("Class ID: \(classId)")
+                            .font(.subheadline)
+                            .foregroundColor(Constants.Colors.textPrimary)
+                    }
+
                     Spacer()
+
                     if viewModel.isLoadingSchedule {
                         ProgressView()
                             .scaleEffect(0.8)
@@ -391,12 +466,12 @@ struct DebateSetupView: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
-                Text(alternative.classId)
+                Text(alternative.dayTimeString)
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundColor(isSelected ? .white : Constants.Colors.textPrimary)
 
-                Text("Starts \(alternative.startTime)")
+                Text(alternative.classId)
                     .font(.caption)
                     .foregroundColor(
                         isSelected ? Color.white.opacity(0.8) : Constants.Colors.textSecondary

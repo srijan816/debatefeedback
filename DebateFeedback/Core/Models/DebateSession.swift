@@ -18,6 +18,8 @@ final class DebateSession {
     var replyTimeSeconds: Int?
     var createdAt: Date
     var isGuestMode: Bool
+    var classId: String?
+    var scheduleId: String?
 
     // Backend integration
     var backendDebateId: String? // The debate ID from the backend API
@@ -40,7 +42,9 @@ final class DebateSession {
         speechTimeSeconds: Int,
         replyTimeSeconds: Int? = nil,
         isGuestMode: Bool = false,
-        teacher: Teacher? = nil
+        teacher: Teacher? = nil,
+        classId: String? = nil,
+        scheduleId: String? = nil
     ) {
         self.id = id
         self.motion = motion
@@ -51,6 +55,8 @@ final class DebateSession {
         self.isGuestMode = isGuestMode
         self.createdAt = Date()
         self.teacher = teacher
+        self.classId = classId
+        self.scheduleId = scheduleId
     }
 
     // Helper to work with team composition

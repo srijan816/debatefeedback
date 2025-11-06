@@ -48,7 +48,55 @@ final class SetupViewModel {
     var isLoadingSchedule = false
     var scheduleNotice: String?
     var selectedClassId: String?
+    var selectedScheduleId: String?
+    var selectedClassDayTime: String? // Formatted day/time for current class
+    var availableClasses: [ScheduleResponse.ClassInfo] = []
     var availableAlternatives: [ScheduleAlternative] = []
+
+    struct ClassPickerOption: Identifiable, Hashable {
+        let id: String
+        let title: String
+        let subtitle: String?
+    }
+
+    var classPickerOptions: [ClassPickerOption] {
+        if !availableClasses.isEmpty {
+            return availableClasses.map { option in
+                ClassPickerOption(
+                    id: option.classId,
+                    title: option.displayTitle,
+                    subtitle: option.displaySubtitle
+                )
+            }
+        }
+
+        guard let classId = selectedClassId else { return [] }
+        var options: [ClassPickerOption] = []
+        var seen = Set<String>()
+
+        let title = selectedClassDayTime ?? classId
+        let subtitle = selectedClassDayTime == nil ? nil : classId
+        options.append(ClassPickerOption(id: classId, title: title, subtitle: subtitle))
+        seen.insert(classId)
+
+        for alternative in availableAlternatives where seen.insert(alternative.classId).inserted {
+            options.append(
+                ClassPickerOption(
+                    id: alternative.classId,
+                    title: alternative.dayTimeString,
+                    subtitle: alternative.classId
+                )
+            )
+        }
+
+        return options
+    }
+
+    /// Returns the currently selected alternative, if any
+    var selectedAlternative: ScheduleAlternative? {
+        guard let selectedClassId else { return nil }
+        return availableAlternatives.first { $0.classId == selectedClassId }
+    }
 
     // Toast notification state
     var showToast = false
@@ -92,6 +140,26 @@ final class SetupViewModel {
     }
 
     @MainActor
+    func selectClass(withId classId: String) {
+        guard classId != selectedClassId else { return }
+
+        if let classInfo = classInfo(for: classId) {
+            applyClassInfo(classInfo, fallbackResponse: nil)
+
+            Task {
+                await loadSchedule(forClassId: classId)
+            }
+            return
+        }
+
+        if let alternative = availableAlternatives.first(where: { $0.classId == classId }) {
+            Task {
+                await switchToAlternative(alternative)
+            }
+        }
+    }
+
+    @MainActor
     private func loadSchedule(forClassId classId: String?) async {
         guard let teacher = cachedTeacher else { return }
 
@@ -129,6 +197,82 @@ final class SetupViewModel {
         } catch {
             errorMessage = error.localizedDescription
             showError = true
+        }
+    }
+
+    private func classInfo(for classId: String) -> ScheduleResponse.ClassInfo? {
+        availableClasses.first { $0.classId == classId }
+    }
+
+    @MainActor
+    private func applyClassInfo(
+        _ classInfo: ScheduleResponse.ClassInfo,
+        fallbackResponse: ScheduleResponse?
+    ) {
+        selectedClassId = classInfo.classId
+        selectedScheduleId = classInfo.scheduleId
+        let resolvedDayTime = classInfo.dayTimeString ?? fallbackResponse?.classDayTimeString
+        if let resolvedDayTime, resolvedDayTime != classInfo.classId {
+            selectedClassDayTime = resolvedDayTime
+        } else {
+            selectedClassDayTime = nil
+        }
+
+        let roster = classInfo.students.isEmpty ? (fallbackResponse?.students ?? []) : classInfo.students
+        updateRoster(with: roster)
+
+        let formatString = classInfo.format ?? fallbackResponse?.format
+        let speechTime = classInfo.speechTime ?? fallbackResponse?.speechTime
+        applyFormatAndTiming(formatString: formatString, fallbackFormat: fallbackResponse?.format, speechTime: speechTime, fallbackSpeechTime: fallbackResponse?.speechTime)
+
+        applySuggestedMotion(classInfo.suggestedMotion, fallback: fallbackResponse?.suggestedMotion)
+
+        scheduleNotice = nil
+    }
+
+    private func updateRoster(with responses: [StudentResponse]) {
+        if let firstLevel = responses.first?.level.lowercased(),
+           let level = StudentLevel(rawValue: firstLevel) {
+            studentLevel = level
+        }
+
+        students = responses.map { student in
+            let level = StudentLevel(rawValue: student.level.lowercased()) ?? studentLevel
+            let identifier = UUID(uuidString: student.id) ?? UUID()
+            return Student(id: identifier, name: student.name, level: level)
+        }
+
+        // Reset teams to allow fresh assignment
+        propTeam.removeAll()
+        oppTeam.removeAll()
+        ogTeam.removeAll()
+        ooTeam.removeAll()
+        cgTeam.removeAll()
+        coTeam.removeAll()
+    }
+
+    private func applyFormatAndTiming(
+        formatString: String?,
+        fallbackFormat: String?,
+        speechTime: Int?,
+        fallbackSpeechTime: Int?
+    ) {
+        if let formatName = formatString ?? fallbackFormat,
+           let newFormat = DebateFormat(rawValue: formatName) {
+            selectedFormat = newFormat
+            updateTimeDefaults()
+        }
+
+        if let time = speechTime ?? fallbackSpeechTime {
+            speechTimeSeconds = time
+        }
+    }
+
+    private func applySuggestedMotion(_ suggested: String?, fallback: String?) {
+        if let suggestion = (suggested ?? fallback)?.trimmingCharacters(in: .whitespacesAndNewlines), !suggestion.isEmpty {
+            motion = suggestion
+        } else {
+            motion = ""
         }
     }
 
@@ -402,7 +546,9 @@ final class SetupViewModel {
             speechTimeSeconds: speechTimeSeconds,
             replyTimeSeconds: replyTimeSeconds,
             isGuestMode: teacher == nil,
-            teacher: teacher
+            teacher: teacher,
+            classId: selectedClassId,
+            scheduleId: selectedScheduleId
         )
 
         // Set team composition
@@ -452,13 +598,50 @@ final class SetupViewModel {
 
     @MainActor
     private func applySchedule(_ response: ScheduleResponse) {
-        selectedClassId = response.classId
+        selectedScheduleId = nil
+
+        var classOptions: [ScheduleResponse.ClassInfo] = []
+        var seen = Set<String>()
+
+        if let providedOptions = response.availableClasses {
+            for option in providedOptions where seen.insert(option.classId).inserted {
+                classOptions.append(option)
+            }
+        }
+
+        if seen.insert(response.classId).inserted {
+            classOptions.insert(.primaryFallback(from: response), at: 0)
+        }
+
+        availableClasses = classOptions
+
+        if let currentOption = classInfo(for: response.classId) {
+            applyClassInfo(currentOption, fallbackResponse: response)
+        } else {
+            // Fallback to legacy handling if the response class is missing from availableClasses
+            selectedClassId = response.classId
+            if response.classDayTimeString != response.classId {
+                selectedClassDayTime = response.classDayTimeString
+            } else {
+                selectedClassDayTime = nil
+            }
+            selectedScheduleId = nil
+            updateRoster(with: response.students)
+            applyFormatAndTiming(
+                formatString: response.format,
+                fallbackFormat: nil,
+                speechTime: response.speechTime,
+                fallbackSpeechTime: nil
+            )
+            applySuggestedMotion(response.suggestedMotion, fallback: nil)
+            scheduleNotice = nil
+        }
 
         if let alternatives = response.alternatives {
-            var seen = Set<String>()
+            var seenAlternatives = Set<String>()
             availableAlternatives = alternatives.compactMap { option in
                 guard option.classId != response.classId else { return nil }
-                if seen.insert(option.classId).inserted {
+                if seenAlternatives.insert(option.classId).inserted {
                     return option
                 }
                 return nil
@@ -466,41 +649,6 @@ final class SetupViewModel {
         } else {
             availableAlternatives = []
         }
-        scheduleNotice = nil
-
-        if let suggested = response.suggestedMotion {
-            motion = suggested
-        } else if motion.isEmpty {
-            motion = ""
-        }
-
-        if let fetchedFormat = DebateFormat(rawValue: response.format) {
-            selectedFormat = fetchedFormat
-        }
-
-        updateTimeDefaults()
-        speechTimeSeconds = response.speechTime
-
-        // Update student level based on the first student, if provided
-        if let firstLevel = response.students.first?.level.lowercased(),
-           let level = StudentLevel(rawValue: firstLevel) {
-            studentLevel = level
-        }
-
-        // Replace current students with the class roster
-        students = response.students.map { student in
-            let level = StudentLevel(rawValue: student.level.lowercased()) ?? studentLevel
-            let identifier = UUID(uuidString: student.id) ?? UUID()
-            return Student(id: identifier, name: student.name, level: level)
-        }
-
-        // Reset teams to allow fresh assignment
-        propTeam.removeAll()
-        oppTeam.removeAll()
-        ogTeam.removeAll()
-        ooTeam.removeAll()
-        cgTeam.removeAll()
-        coTeam.removeAll()
     }
 
     private func createDebateOnBackend(session: DebateSession) async throws -> String {
@@ -569,7 +717,9 @@ final class SetupViewModel {
             format: session.format.rawValue,
             studentLevel: session.studentLevel.rawValue,
             speechTimeSeconds: session.speechTimeSeconds,
-            teams: teamsData
+            teams: teamsData,
+            classId: session.classId,
+            scheduleId: session.scheduleId
         )
 
         let response: CreateDebateResponse = try await APIClient.shared.request(
