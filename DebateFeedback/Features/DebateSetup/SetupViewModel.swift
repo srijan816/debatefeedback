@@ -167,7 +167,7 @@ final class SetupViewModel {
 
         if let classId,
            let cached = scheduleCache[classId] {
-            applySchedule(cached)
+            applySchedule(cached, preferredClassId: classId)
             return
         }
 
@@ -189,7 +189,7 @@ final class SetupViewModel {
             )
 
             scheduleCache[response.classId] = response
-            applySchedule(response)
+            applySchedule(response, preferredClassId: classId ?? selectedClassId)
 
         } catch let networkError as NetworkError {
             handleScheduleError(networkError)
@@ -209,23 +209,38 @@ final class SetupViewModel {
         _ classInfo: ScheduleResponse.ClassInfo,
         fallbackResponse: ScheduleResponse?
     ) {
+        let fallbackMatchesSelectedClass = fallbackResponse?.classId == classInfo.classId
+
         selectedClassId = classInfo.classId
         selectedScheduleId = classInfo.scheduleId
-        let resolvedDayTime = classInfo.dayTimeString ?? fallbackResponse?.classDayTimeString
+        let resolvedDayTime = classInfo.dayTimeString ?? (fallbackMatchesSelectedClass ? fallbackResponse?.classDayTimeString : nil)
         if let resolvedDayTime, resolvedDayTime != classInfo.classId {
             selectedClassDayTime = resolvedDayTime
         } else {
             selectedClassDayTime = nil
         }
 
-        let roster = classInfo.students.isEmpty ? (fallbackResponse?.students ?? []) : classInfo.students
+        let roster: [StudentResponse]
+        if !classInfo.students.isEmpty {
+            roster = classInfo.students
+        } else if fallbackMatchesSelectedClass, let fallbackStudents = fallbackResponse?.students {
+            roster = fallbackStudents
+        } else {
+            roster = []
+        }
         updateRoster(with: roster)
 
-        let formatString = classInfo.format ?? fallbackResponse?.format
-        let speechTime = classInfo.speechTime ?? fallbackResponse?.speechTime
-        applyFormatAndTiming(formatString: formatString, fallbackFormat: fallbackResponse?.format, speechTime: speechTime, fallbackSpeechTime: fallbackResponse?.speechTime)
+        let fallbackFormat = fallbackMatchesSelectedClass ? fallbackResponse?.format : nil
+        let fallbackSpeechTime = fallbackMatchesSelectedClass ? fallbackResponse?.speechTime : nil
+        applyFormatAndTiming(
+            formatString: classInfo.format,
+            fallbackFormat: fallbackFormat,
+            speechTime: classInfo.speechTime,
+            fallbackSpeechTime: fallbackSpeechTime
+        )
 
-        applySuggestedMotion(classInfo.suggestedMotion, fallback: fallbackResponse?.suggestedMotion)
+        let fallbackMotion = fallbackMatchesSelectedClass ? fallbackResponse?.suggestedMotion : nil
+        applySuggestedMotion(classInfo.suggestedMotion, fallback: fallbackMotion)
 
         scheduleNotice = nil
     }
@@ -269,11 +284,17 @@ final class SetupViewModel {
     }
 
     private func applySuggestedMotion(_ suggested: String?, fallback: String?) {
-        if let suggestion = (suggested ?? fallback)?.trimmingCharacters(in: .whitespacesAndNewlines), !suggestion.isEmpty {
+        if let suggestion = suggested?.trimmingCharacters(in: .whitespacesAndNewlines), !suggestion.isEmpty {
             motion = suggestion
-        } else {
-            motion = ""
+            return
         }
+
+        if let fallback = fallback?.trimmingCharacters(in: .whitespacesAndNewlines), !fallback.isEmpty {
+            motion = fallback
+            return
+        }
+
+        // Keep showing the last known motion until we explicitly receive a new one.
     }
 
     private func handleScheduleError(_ error: NetworkError) {
@@ -597,7 +618,7 @@ final class SetupViewModel {
     // MARK: - Schedule Helpers
 
     @MainActor
-    private func applySchedule(_ response: ScheduleResponse) {
+    private func applySchedule(_ response: ScheduleResponse, preferredClassId: String? = nil) {
         selectedScheduleId = nil
 
         var classOptions: [ScheduleResponse.ClassInfo] = []
@@ -615,7 +636,11 @@ final class SetupViewModel {
 
         availableClasses = classOptions
 
-        if let currentOption = classInfo(for: response.classId) {
+        let targetClassId = preferredClassId ?? selectedClassId ?? response.classId
+
+        if let preferredOption = classInfo(for: targetClassId) {
+            applyClassInfo(preferredOption, fallbackResponse: response)
+        } else if let currentOption = classInfo(for: response.classId) {
             applyClassInfo(currentOption, fallbackResponse: response)
         } else {
             // Fallback to legacy handling if the response class is missing from availableClasses
