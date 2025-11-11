@@ -12,86 +12,41 @@ struct FeedbackDetailView: View {
     let recording: SpeechRecording
 
     @State private var feedbackContent: String = ""
+    @State private var sections: [FeedbackSectionData] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showingShareSheet = false
-    @State private var useWebView = true // Show HTML viewer by default
     @State private var webViewLoading = false
     @State private var webViewError: String?
+    @State private var playbackService = AudioPlaybackService()
+    @State private var activeMomentID: UUID?
+    @State private var playbackErrorMessage: String?
+    @State private var displayMode: FeedbackDisplayMode
+
+    init(recording: SpeechRecording) {
+        self.recording = recording
+        let initialMode: FeedbackDisplayMode = .highlights
+        _displayMode = State(initialValue: initialMode)
+    }
 
     var body: some View {
-        Group {
-            if let urlString = recording.feedbackUrl, let url = URL(string: urlString), useWebView {
-                // Show HTML feedback in WebView
-                VStack(spacing: 0) {
-                    // Speaker info bar
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(recording.speakerName)
-                                .font(.headline)
-                            Text(recording.speakerPosition)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        if webViewLoading {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        }
-                        Text("\(recording.durationSeconds / 60):\(String(format: "%02d", recording.durationSeconds % 60))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                    .background(Color(uiColor: .secondarySystemBackground))
-
-                    // WebView with feedback or error
-                    if let error = webViewError {
-                        VStack(spacing: 16) {
-                            Image(systemName: "exclamationmark.triangle")
-                                .font(.system(size: 50))
-                                .foregroundColor(.orange)
-
-                            Text("Unable to Load Feedback")
-                                .font(.headline)
-
-                            Text(error)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding()
-
-                            Button {
-                                UIApplication.shared.open(url)
-                            } label: {
-                                Label("Open in Safari", systemImage: "safari")
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        WebView(url: url, isLoading: $webViewLoading, error: $webViewError)
+        VStack(spacing: 0) {
+            if availableDisplayModes.count > 1 {
+                Picker("View Mode", selection: $displayMode) {
+                    ForEach(availableDisplayModes) { mode in
+                        Text(mode.rawValue).tag(mode)
                     }
                 }
-            } else {
-                // Fallback to text-based viewer
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        speakerHeader
+                .pickerStyle(.segmented)
+                .padding([.horizontal, .top])
+            }
 
-                        if isLoading {
-                            loadingView
-                        } else if let error = errorMessage {
-                            errorView(error)
-                        } else {
-                            feedbackContentView
-                        }
-                    }
-                    .padding()
-                }
-                .task {
-                    await loadFeedback()
+            Group {
+                switch displayMode {
+                case .document:
+                    documentFeedbackView
+                case .highlights:
+                    highlightsFeedbackView
                 }
             }
         }
@@ -124,6 +79,121 @@ struct FeedbackDetailView: View {
             if let url = recording.feedbackUrl {
                 ShareSheet(items: [URL(string: url)!])
             }
+        }
+        .task {
+            await loadFeedback()
+        }
+        .onChange(of: playbackService.isPlaying) { _, isPlaying in
+            if !isPlaying {
+                activeMomentID = nil
+            }
+        }
+        .onDisappear {
+            playbackService.stop()
+        }
+        .alert("Playback Error", isPresented: Binding(
+            get: { playbackErrorMessage != nil },
+            set: { if !$0 { playbackErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(playbackErrorMessage ?? "")
+        }
+    }
+
+    private var availableDisplayModes: [FeedbackDisplayMode] {
+        if recording.feedbackUrl == nil {
+            return [.highlights]
+        }
+        return [.highlights, .document]
+    }
+
+    private var documentFeedbackView: some View {
+        Group {
+            if let urlString = recording.feedbackUrl, let url = URL(string: urlString) {
+                VStack(spacing: 0) {
+                    speakerInfoBar
+
+                    if let error = webViewError {
+                        documentErrorView(url: url, error: error)
+                    } else {
+                        WebView(url: url, isLoading: $webViewLoading, error: $webViewError)
+                    }
+                }
+            } else {
+                ContentUnavailableView(
+                    "Document Unavailable",
+                    systemImage: "doc.text.fill",
+                    description: Text("Switch to Highlights to see structured feedback")
+                )
+            }
+        }
+    }
+
+    private var speakerInfoBar: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recording.speakerName)
+                    .font(.headline)
+                Text(recording.speakerPosition)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            if webViewLoading {
+                ProgressView()
+                    .scaleEffect(0.8)
+            }
+            Text("\(recording.durationSeconds / 60):\(String(format: "%02d", recording.durationSeconds % 60))")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    private func documentErrorView(url: URL, error: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 50))
+                .foregroundColor(.orange)
+
+            Text("Unable to Load Feedback")
+                .font(.headline)
+
+            Text(error)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding()
+
+            Button {
+                UIApplication.shared.open(url)
+            } label: {
+                Label("Open in Safari", systemImage: "safari")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var highlightsFeedbackView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                speakerHeader
+
+                transcriptSection
+
+                if isLoading {
+                    loadingView
+                } else if let error = errorMessage {
+                    errorView(error)
+                } else {
+                    feedbackContentView
+                }
+            }
+            .padding()
         }
     }
 
@@ -211,19 +281,119 @@ struct FeedbackDetailView: View {
 
     private var feedbackContentView: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // Parse and display feedback sections
-            ForEach(parseFeedbackSections(), id: \.title) { section in
-                FeedbackSection(title: section.title, content: section.content)
+            ForEach(displaySections) { section in
+                FeedbackSectionView(
+                    section: section,
+                    playMoment: playMoment,
+                    isMomentActive: { moment in
+                        activeMomentID == moment.id && playbackService.isPlaying
+                    }
+                )
             }
+        }
+    }
+
+    private var transcriptSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Transcript")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(Constants.Colors.primaryAction)
+
+                Spacer()
+
+                if let statusText = transcriptStatusLabel {
+                    Text(statusText)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if let transcript = transcriptText {
+                Text(transcript)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let transcriptURL = transcriptURL {
+                Button {
+                    UIApplication.shared.open(transcriptURL)
+                } label: {
+                    Label("Open Transcript", systemImage: "doc.text.magnifyingglass")
+                        .font(.subheadline)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Constants.Colors.primaryBlue)
+
+                Text("Transcript opens in your browser.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("Transcript will appear once the transcription finishes.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private var displaySections: [FeedbackSectionData] {
+        if !sections.isEmpty {
+            return sections
+        }
+
+        if feedbackContent.isEmpty {
+            return [FeedbackSectionData(
+                title: "Feedback",
+                content: "Feedback will appear here once processing is complete.",
+                playableMoments: []
+            )]
+        }
+
+        return parseFeedbackSections(from: feedbackContent)
+    }
+
+    private var transcriptText: String? {
+        let trimmed = recording.transcriptText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var transcriptURL: URL? {
+        guard let urlString = recording.transcriptUrl,
+              let url = URL(string: urlString) else {
+            return nil
+        }
+        return url
+    }
+
+    private var transcriptStatusLabel: String? {
+        switch recording.transcriptionStatus {
+        case .complete:
+            return "Ready"
+        case .processing:
+            return "Transcribing..."
+        case .failed:
+            return "Failed"
+        case .pending:
+            return nil
         }
     }
 
     // MARK: - Load Feedback
 
     private func loadFeedback() async {
-        // Check if we have cached feedback content
+        if isLoading == false && !sections.isEmpty {
+            return
+        }
+
         if let cached = recording.feedbackContent, !cached.isEmpty {
             feedbackContent = cached
+            sections = parseFeedbackSections(from: cached)
             isLoading = false
             return
         }
@@ -234,24 +404,21 @@ struct FeedbackDetailView: View {
             return
         }
 
-        // Fetch feedback from the backend
         do {
             let response: FeedbackContentResponse = try await APIClient.shared.request(
                 endpoint: .getFeedbackContent(speechId: speechId)
             )
 
             feedbackContent = response.feedbackText
+            sections = buildSections(from: response)
 
-            // Cache the feedback content
             recording.feedbackContent = feedbackContent
             await MainActor.run {
-                // Save to database if we have access to context
-                // Note: This would require passing ModelContext to this view
+                // Persisting would require access to ModelContext
             }
 
             isLoading = false
         } catch {
-            // If API call fails, fall back to showing message to open Google Docs
             errorMessage = "Feedback is ready in Google Docs. Tap the menu to open it."
             isLoading = false
         }
@@ -259,52 +426,186 @@ struct FeedbackDetailView: View {
 
     // MARK: - Parse Feedback
 
-    private func parseFeedbackSections() -> [FeedbackSectionData] {
-        // For now, display the raw content as a single section
-        // You can enhance this to parse structured feedback
-        if feedbackContent.isEmpty {
-            return [FeedbackSectionData(
-                title: "Feedback",
-                content: "Feedback will appear here once processing is complete."
-            )]
+    private func buildSections(from response: FeedbackContentResponse) -> [FeedbackSectionData] {
+        if let responseSections = response.sections, !responseSections.isEmpty {
+            return responseSections.map { section in
+                FeedbackSectionData(
+                    title: section.title,
+                    content: section.content,
+                    playableMoments: section.title.lowercased().contains("playable") ? extractPlayableMoments(from: section.content) : []
+                )
+            }
         }
 
-        // Simple parsing - split by common headers
-        var sections: [FeedbackSectionData] = []
+        return parseFeedbackSections(from: response.feedbackText)
+    }
 
-        if feedbackContent.contains("Overall Performance") || feedbackContent.contains("Summary") {
-            sections.append(FeedbackSectionData(
-                title: "Overall Assessment",
-                content: feedbackContent
-            ))
-        } else {
+    private func parseFeedbackSections(from content: String) -> [FeedbackSectionData] {
+        let lines = content.components(separatedBy: .newlines)
+        var sections: [FeedbackSectionData] = []
+        var currentTitle = "AI Feedback"
+        var currentLines: [String] = []
+
+        func flushSection() {
+            let body = currentLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !body.isEmpty else {
+                currentLines.removeAll()
+                return
+            }
+
+            let moments = currentTitle.lowercased().contains("playable") ? extractPlayableMoments(from: body) : []
+            sections.append(FeedbackSectionData(title: currentTitle, content: body, playableMoments: moments))
+            currentLines.removeAll()
+        }
+
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+
+            if line.isEmpty {
+                currentLines.append("")
+                continue
+            }
+
+            if isLikelySectionHeader(line) {
+                flushSection()
+                currentTitle = line.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+                continue
+            }
+
+            currentLines.append(line)
+        }
+
+        flushSection()
+
+        if sections.isEmpty {
             sections.append(FeedbackSectionData(
                 title: "AI Feedback",
-                content: feedbackContent
+                content: content.trimmingCharacters(in: .whitespacesAndNewlines),
+                playableMoments: extractPlayableMoments(from: content)
             ))
         }
 
         return sections
     }
+
+    private func isLikelySectionHeader(_ line: String) -> Bool {
+        guard !line.isEmpty else { return false }
+        if line.hasSuffix(":") { return true }
+        if line.count < 40, line == line.uppercased() { return true }
+
+        let knownHeaders = ["overall", "summary", "strengths", "opportunities", "recommendations", "action items", "playable moments"]
+        return knownHeaders.contains { line.lowercased().starts(with: $0) }
+    }
+
+    private func extractPlayableMoments(from content: String) -> [PlayableMoment] {
+        let lines = content.components(separatedBy: .newlines)
+        let pattern = #"(?:(\d{1,2}):)?(\d{1,2}):(\d{2})"#
+        let regex = try? NSRegularExpression(pattern: pattern, options: [])
+        var moments: [PlayableMoment] = []
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let regex = regex else { break }
+            let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+            guard let match = regex.firstMatch(in: trimmed, options: [], range: range),
+                  let matchRange = Range(match.range, in: trimmed) else { continue }
+
+            let timeString = String(trimmed[matchRange])
+            guard let seconds = timeInterval(from: timeString) else { continue }
+
+            let descriptionRaw = trimmed[matchRange.upperBound...]
+            let description = descriptionRaw
+                .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "-–—:"))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let summary = description.isEmpty ? "Moment at \(timeString)" : description
+            moments.append(PlayableMoment(timestampLabel: timeString, timestampSeconds: seconds, summary: summary))
+        }
+
+        return moments.sorted { $0.timestampSeconds < $1.timestampSeconds }
+    }
+
+    private func timeInterval(from timeString: String) -> TimeInterval? {
+        let parts = timeString.split(separator: ":").compactMap { Double($0) }
+        guard parts.count >= 2 else { return nil }
+
+        if parts.count == 2 {
+            return parts[0] * 60 + parts[1]
+        } else if parts.count == 3 {
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        }
+
+        return nil
+    }
+
+    private func playMoment(_ moment: PlayableMoment) {
+        let fileURL = URL(fileURLWithPath: recording.localFilePath)
+
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            playbackErrorMessage = "The local recording file could not be found."
+            return
+        }
+
+        do {
+            if activeMomentID == moment.id {
+                if playbackService.isPlaying {
+                    playbackService.pause()
+                } else {
+                    playbackService.resume()
+                }
+                return
+            }
+
+            if playbackService.currentFileURL == fileURL {
+                playbackService.seek(to: moment.timestampSeconds)
+                if !playbackService.isPlaying {
+                    playbackService.resume()
+                }
+            } else {
+                try playbackService.play(from: fileURL, startingAt: moment.timestampSeconds)
+            }
+            activeMomentID = moment.id
+        } catch {
+            playbackErrorMessage = error.localizedDescription
+        }
+    }
 }
 
 // MARK: - Feedback Section
 
-struct FeedbackSection: View {
-    let title: String
-    let content: String
+struct FeedbackSectionView: View {
+    let section: FeedbackSectionData
+    let playMoment: (PlayableMoment) -> Void
+    let isMomentActive: (PlayableMoment) -> Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
+            Text(section.title)
                 .font(.title3)
                 .fontWeight(.bold)
                 .foregroundColor(Constants.Colors.primaryAction)
 
-            Text(content)
-                .font(.body)
-                .foregroundColor(.primary)
-                .fixedSize(horizontal: false, vertical: true)
+            if section.playableMoments.isEmpty {
+                Text(section.content)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 12) {
+                    Text("Tap a moment to jump to that part of the recording.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    ForEach(section.playableMoments) { moment in
+                        PlayableMomentRow(
+                            moment: moment,
+                            isActive: isMomentActive(moment),
+                            playMoment: playMoment
+                        )
+                    }
+                }
+            }
         }
         .padding()
         .background(Color(uiColor: .secondarySystemBackground))
@@ -312,9 +613,60 @@ struct FeedbackSection: View {
     }
 }
 
-struct FeedbackSectionData {
+struct PlayableMomentRow: View {
+    let moment: PlayableMoment
+    let isActive: Bool
+    let playMoment: (PlayableMoment) -> Void
+
+    var body: some View {
+        Button {
+            playMoment(moment)
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(moment.timestampLabel)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    Text(moment.summary)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Image(systemName: isActive ? "pause.fill" : "play.fill")
+                    .font(.title3)
+                    .foregroundColor(Constants.Colors.primaryAction)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isActive ? Constants.Colors.primaryAction.opacity(0.12) : Color(uiColor: .systemBackground))
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct FeedbackSectionData: Identifiable {
+    let id = UUID()
     let title: String
     let content: String
+    let playableMoments: [PlayableMoment]
+}
+
+struct PlayableMoment: Identifiable, Equatable {
+    let id = UUID()
+    let timestampLabel: String
+    let timestampSeconds: TimeInterval
+    let summary: String
+}
+
+enum FeedbackDisplayMode: String, Identifiable, CaseIterable {
+    case highlights = "Highlights"
+    case document = "Document"
+
+    var id: String { rawValue }
 }
 
 // MARK: - WebView Component
@@ -419,7 +771,9 @@ struct WebView: UIViewRepresentable {
         debateSession: nil
     )
     recording.feedbackUrl = "http://144.217.164.110:12000/feedback/view/22"
-    recording.processingStatus = .complete
+    recording.transcriptionStatus = .complete
+    recording.feedbackStatus = .complete
+    recording.updateAggregatedStatus()
 
     return NavigationStack {
         FeedbackDetailView(recording: recording)

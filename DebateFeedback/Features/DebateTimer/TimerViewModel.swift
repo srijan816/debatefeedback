@@ -132,33 +132,6 @@ final class TimerViewModel {
         }
     }
 
-    /// Average speech time from completed recordings
-    var averageSpeechTime: TimeInterval? {
-        guard !recordings.isEmpty else { return nil }
-        let total = recordings.reduce(0) { $0 + TimeInterval($1.durationSeconds) }
-        return total / Double(recordings.count)
-    }
-
-    var formattedAverageSpeechTime: String? {
-        guard let avg = averageSpeechTime else { return nil }
-        let minutes = Int(avg) / 60
-        let seconds = Int(avg) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    /// Predicted total debate duration based on average
-    var predictedTotalDuration: TimeInterval? {
-        guard let avg = averageSpeechTime else { return nil }
-        return avg * Double(speakers.count)
-    }
-
-    var formattedPredictedDuration: String? {
-        guard let total = predictedTotalDuration else { return nil }
-        let minutes = Int(total) / 60
-        let seconds = Int(total) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
     /// Check and fire warnings with haptic feedback
     func checkAndFireWarnings() {
         guard isRecording && !isOvertime else {
@@ -221,6 +194,14 @@ final class TimerViewModel {
         // Stop recording
         guard let result = audioService.stopRecording() else {
             errorMessage = "Failed to stop recording"
+            showError = true
+            return
+        }
+
+        let minimumDuration: TimeInterval = 1.0
+        if result.duration < minimumDuration {
+            try? FileManager.deleteAudioFile(at: result.url.path)
+            errorMessage = "Recording is too short. Please record at least one second of audio."
             showError = true
             return
         }
@@ -309,6 +290,9 @@ final class TimerViewModel {
         Task {
             do {
                 recording.uploadStatus = .uploading
+                recording.transcriptionStatus = .processing
+                recording.feedbackStatus = .pending
+                recording.updateAggregatedStatus()
                 try? modelContext.save()
 
                 let speechId = try await uploadService.uploadSpeech(
@@ -322,7 +306,8 @@ final class TimerViewModel {
                 }
 
                 recording.uploadStatus = .uploaded
-                recording.processingStatus = .processing
+                recording.feedbackStatus = .processing
+                recording.updateAggregatedStatus()
                 recording.speechId = speechId // Store the speech ID
                 try? modelContext.save()
 
@@ -331,6 +316,9 @@ final class TimerViewModel {
 
             } catch {
                 recording.uploadStatus = .failed
+                recording.transcriptionStatus = .failed
+                recording.transcriptionErrorMessage = "Upload failed: \(error.localizedDescription)"
+                recording.updateAggregatedStatus()
                 try? modelContext.save()
 
                 errorMessage = "Failed to upload \(recording.speakerName)'s speech: \(error.localizedDescription)"
@@ -358,14 +346,8 @@ final class TimerViewModel {
                         endpoint: .getSpeechStatus(speechId: speechId)
                     )
 
-                    if status.status == "complete", let url = status.googleDocUrl {
-                        recording.processingStatus = .complete
-                        recording.feedbackUrl = url
-                        try? modelContext.save()
-                        return
-                    } else if status.status == "failed" {
-                        recording.processingStatus = .failed
-                        try? modelContext.save()
+                    let isTerminal = apply(statusResponse: status, to: recording)
+                    if isTerminal {
                         return
                     }
 
@@ -377,9 +359,70 @@ final class TimerViewModel {
             }
 
             // Timeout
-            recording.processingStatus = .failed
+            recording.feedbackStatus = .failed
+            recording.feedbackErrorMessage = "Timed out waiting for feedback"
+            recording.updateAggregatedStatus()
             try? modelContext.save()
         }
+    }
+
+    private func apply(statusResponse: SpeechStatusResponse, to recording: SpeechRecording) -> Bool {
+        let lowerStatus = statusResponse.status.lowercased()
+
+        if let transStatus = statusResponse.transcriptionStatus {
+            recording.transcriptionStatus = ProcessingStatus(apiStatus: transStatus)
+        } else if lowerStatus == "complete" && recording.transcriptionStatus != .complete {
+            recording.transcriptionStatus = .complete
+        }
+
+        if let transError = statusResponse.transcriptionError, !transError.isEmpty {
+            recording.transcriptionErrorMessage = transError
+            recording.transcriptionStatus = .failed
+        }
+
+        if let feedbackStatus = statusResponse.feedbackStatus {
+            recording.feedbackStatus = ProcessingStatus(apiStatus: feedbackStatus)
+        } else if lowerStatus == "complete" {
+            recording.feedbackStatus = .complete
+        }
+
+        if let feedbackError = statusResponse.feedbackError, !feedbackError.isEmpty {
+            recording.feedbackErrorMessage = feedbackError
+            recording.feedbackStatus = .failed
+        }
+
+        if let docUrl = statusResponse.googleDocUrl, !docUrl.isEmpty {
+            recording.feedbackUrl = docUrl
+        }
+
+        if let transcriptUrl = statusResponse.transcriptUrl ?? statusResponse.transcriptDownloadUrl, !transcriptUrl.isEmpty {
+            recording.transcriptUrl = transcriptUrl
+        }
+
+        if let transcriptText = statusResponse.transcriptText, !transcriptText.isEmpty {
+            recording.transcriptText = transcriptText
+        }
+
+        if let generalError = statusResponse.errorMessage, !generalError.isEmpty {
+            if recording.feedbackStatus == .failed {
+                recording.feedbackErrorMessage = generalError
+            } else if recording.transcriptionStatus == .failed {
+                recording.transcriptionErrorMessage = generalError
+            }
+        }
+
+        recording.updateAggregatedStatus()
+        try? modelContext.save()
+
+        if recording.transcriptionStatus == .failed || recording.feedbackStatus == .failed {
+            return true
+        }
+
+        if recording.feedbackStatus == .complete {
+            return true
+        }
+
+        return false
     }
 
     // MARK: - Completion
@@ -416,11 +459,7 @@ final class TimerViewModel {
     }
 
     private func playRecording(_ recording: SpeechRecording) {
-        guard let url = URL(string: "file://\(recording.localFilePath)") else {
-            errorMessage = "Invalid recording file path"
-            showError = true
-            return
-        }
+        let url = URL(fileURLWithPath: recording.localFilePath)
 
         // Check if file exists
         guard FileManager.default.fileExists(atPath: recording.localFilePath) else {

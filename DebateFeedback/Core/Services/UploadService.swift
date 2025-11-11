@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import AVFoundation
 
 @Observable
 final class UploadService: NSObject {
@@ -36,10 +37,11 @@ final class UploadService: NSObject {
         activeUploads[uploadId] = task
 
         // Prepare metadata
+        let resolvedDuration = ensureDuration(for: recording, fileURL: task.fileURL)
         let metadata: [String: Any] = [
             "speaker_name": recording.speakerName,
             "speaker_position": recording.speakerPosition,
-            "duration_seconds": recording.durationSeconds,
+            "duration_seconds": resolvedDuration,
             "student_level": debateSession.studentLevel.rawValue
         ]
 
@@ -96,10 +98,11 @@ final class UploadService: NSObject {
 
         print("Retrying upload (attempt \(attemptNumber + 1)) for \(recording.speakerName)...")
 
+        let resolvedDuration = ensureDuration(for: recording, fileURL: task.fileURL)
         let metadata: [String: Any] = [
             "speaker_name": recording.speakerName,
             "speaker_position": recording.speakerPosition,
-            "duration_seconds": recording.durationSeconds,
+            "duration_seconds": resolvedDuration,
             "student_level": debateSession.studentLevel.rawValue
         ]
 
@@ -149,5 +152,34 @@ final class UploadService: NSObject {
         let id: UUID
         let fileURL: URL
         var progress: Double = 0.0
+    }
+}
+
+// MARK: - Duration Helpers
+
+private extension UploadService {
+    func ensureDuration(for recording: SpeechRecording, fileURL: URL) -> Int {
+        if recording.durationSeconds > 0 {
+            return recording.durationSeconds
+        }
+
+        let asset = AVURLAsset(url: fileURL)
+        let seconds = CMTimeGetSeconds(asset.duration)
+        if seconds.isFinite, seconds > 0 {
+            let rounded = max(1, Int(round(seconds)))
+            recording.durationSeconds = rounded
+            return rounded
+        }
+
+        if let audioPlayer = try? AVAudioPlayer(contentsOf: fileURL) {
+            let duration = audioPlayer.duration
+            if duration.isFinite, duration > 0 {
+                let rounded = max(1, Int(round(duration)))
+                recording.durationSeconds = rounded
+                return rounded
+            }
+        }
+
+        return 0
     }
 }

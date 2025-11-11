@@ -56,10 +56,23 @@ struct FeedbackListView: View {
         .navigationTitle("Feedback")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if coordinator.canNavigateBack {
+                    Button {
+                        HapticManager.shared.light()
+                        coordinator.navigateBack()
+                    } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .accessibilityLabel("Back button")
+                    .accessibilityHint("Return to the previous step")
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     HapticManager.shared.success()
-                    coordinator.resetToRoot()
+                    coordinator.returnToDebateSetup()
                 } label: {
                     Text("Done")
                         .fontWeight(.semibold)
@@ -134,11 +147,14 @@ struct FeedbackListView: View {
     }
 
     private var readyCount: Int {
-        recordings.filter { $0.processingStatus == .complete }.count
+        recordings.filter { $0.feedbackStatus == .complete }.count
     }
 
     private var processingCount: Int {
-        recordings.filter { $0.processingStatus == .processing }.count
+        recordings.filter {
+            $0.feedbackStatus == .processing ||
+            ($0.feedbackStatus == .pending && $0.transcriptionStatus == .processing)
+        }.count
     }
 }
 
@@ -179,7 +195,7 @@ struct FeedbackCard: View {
             statusView
 
             // View indicator for completed feedback
-            if recording.processingStatus == .complete {
+            if recording.feedbackStatus == .complete {
                 HStack {
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -200,16 +216,24 @@ struct FeedbackCard: View {
     }
 
     private var statusView: some View {
-        HStack(spacing: 6) {
-            if recording.processingStatus == .processing {
-                ProgressView()
-                    .scaleEffect(0.8)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                if recording.feedbackStatus == .processing || recording.transcriptionStatus == .processing {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+
+                Text(statusText)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(statusColor)
             }
 
-            Text(statusText)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(statusColor)
+            if let detail = recording.failureDetails {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundColor(Constants.Colors.failed)
+            }
         }
         .padding(.vertical, 4)
     }
@@ -242,7 +266,11 @@ struct FeedbackCard: View {
     }
 
     private var statusColor: Color {
-        switch recording.processingStatus {
+        if recording.failureDetails != nil {
+            return Constants.Colors.failed
+        }
+
+        switch recording.feedbackStatus {
         case .complete:
             return Constants.Colors.complete
         case .processing:
@@ -250,22 +278,38 @@ struct FeedbackCard: View {
         case .failed:
             return Constants.Colors.failed
         case .pending:
-            return Constants.Colors.pending
+            if recording.transcriptionStatus == .processing {
+                return Constants.Colors.primaryBlue
+            }
+            return recording.uploadStatus == .uploading ? Constants.Colors.uploading : Constants.Colors.pending
         }
     }
 
     private var statusText: String {
-        if recording.processingStatus == .complete {
+        if let detail = recording.failureDetails {
+            return detail
+        }
+
+        if recording.feedbackStatus == .complete {
             return "✓ Ready"
-        } else if recording.processingStatus == .processing {
-            return "Processing..."
-        } else if recording.processingStatus == .failed {
-            return "Failed"
-        } else if recording.uploadStatus == .uploading {
+        }
+
+        if recording.feedbackStatus == .processing {
+            return "Generating feedback"
+        }
+
+        if recording.transcriptionStatus == .processing {
+            return "Transcribing"
+        }
+
+        if recording.uploadStatus == .uploading {
             return "Uploading..."
-        } else if recording.uploadStatus == .failed {
+        }
+
+        if recording.uploadStatus == .failed {
             return "Upload Failed"
         }
+
         return "Pending"
     }
 }

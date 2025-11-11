@@ -54,6 +54,12 @@ final class AppCoordinator {
         currentDebateSession = nil
     }
 
+    func returnToDebateSetup() {
+        navigationPath = [.debateSetup]
+        currentScreen = .debateSetup
+        currentDebateSession = nil
+    }
+
     // MARK: - Authentication Flow
 
     func loginAsTeacher(_ teacher: Teacher) {
@@ -117,5 +123,9 @@ final class AppCoordinator {
 
     var canAccessAutoPopulation: Bool {
         !isGuestMode && currentTeacher != nil
+    }
+
+    var canNavigateBack: Bool {
+        navigationPath.count > 1
     }
 }

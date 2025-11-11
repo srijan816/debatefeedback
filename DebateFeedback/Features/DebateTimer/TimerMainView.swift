@@ -77,17 +77,30 @@ struct TimerMainView: View {
         .toolbarBackground(Constants.Colors.backgroundLight, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if viewModel.isDebateComplete {
-                    Button("View Feedback") {
-                        HapticManager.shared.success()
-                        coordinator.finishDebate()
+            ToolbarItem(placement: .navigationBarLeading) {
+                if coordinator.canNavigateBack {
+                    Button {
+                        HapticManager.shared.light()
+                        coordinator.navigateBack()
+                    } label: {
+                        Label("Back", systemImage: "chevron.left")
                     }
-                    .fontWeight(.semibold)
-                    .foregroundColor(Constants.Colors.softMint)
-                    .accessibilityLabel("View feedback button")
-                    .accessibilityHint("Navigate to feedback list for all speeches")
+                    .disabled(viewModel.isRecording)
+                    .opacity(viewModel.isRecording ? 0.4 : 1.0)
+                    .accessibilityLabel("Back button")
+                    .accessibilityHint("Return to the previous step")
                 }
+            }
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("View Feedback") {
+                    HapticManager.shared.success()
+                    coordinator.finishDebate()
+                }
+                .fontWeight(.semibold)
+                .foregroundColor(Constants.Colors.softMint)
+                .accessibilityLabel("View feedback button")
+                .accessibilityHint("Navigate to feedback list for all speeches")
             }
         }
         .subtleBoundaryEffects(showTopEdge: false, showBottomEdge: true, intensity: 0.07)
@@ -200,32 +213,6 @@ struct TimerMainView: View {
                 .frame(height: 10)
                 .padding(.horizontal, 40)
 
-                // Statistics below timer
-                if let avgTime = viewModel.formattedAverageSpeechTime,
-                   let predicted = viewModel.formattedPredictedDuration {
-                    HStack(spacing: 32) {
-                        VStack(spacing: 4) {
-                            Text("Average Time")
-                                .font(.caption2)
-                                .foregroundColor(Constants.Colors.textSecondary)
-                            Text(avgTime)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(Constants.Colors.textPrimary)
-                        }
-
-                        VStack(spacing: 4) {
-                            Text("Predicted Total")
-                                .font(.caption2)
-                                .foregroundColor(Constants.Colors.textSecondary)
-                            Text(predicted)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(Constants.Colors.textPrimary)
-                        }
-                    }
-                    .padding(.top, 8)
-                }
             }
             .padding(24)
             .softCard(backgroundColor: Constants.Colors.cardBackground, borderColor: nil, cornerRadius: 20)
@@ -508,6 +495,11 @@ struct RecordingCard: View {
                     ProgressView(value: progress)
                         .progressViewStyle(.linear)
                         .tint(Constants.Colors.primaryBlue)
+                } else if let detail = recording.failureDetails {
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundColor(Constants.Colors.failed)
+                        .lineLimit(2)
                 }
             }
 
@@ -559,28 +551,47 @@ struct RecordingCard: View {
     }
 
     private var statusColor: Color {
-        if recording.processingStatus == .complete {
-            return Constants.Colors.complete
-        } else if recording.uploadStatus == .failed || recording.processingStatus == .failed {
+        if recording.failureDetails != nil {
             return Constants.Colors.failed
-        } else if recording.uploadStatus == .uploading {
-            return Constants.Colors.uploading
-        } else if recording.processingStatus == .processing {
-            return Constants.Colors.processing
         }
-        return Constants.Colors.pending
+
+        switch recording.aggregatedProcessingStatus {
+        case .complete:
+            return Constants.Colors.complete
+        case .processing:
+            return recording.transcriptionStatus == .processing ? Constants.Colors.primaryBlue : Constants.Colors.processing
+        case .failed:
+            return Constants.Colors.failed
+        case .pending:
+            return recording.uploadStatus == .uploading ? Constants.Colors.uploading : Constants.Colors.pending
+        }
     }
 
     private var statusText: String {
-        if recording.processingStatus == .complete {
-            return "Ready"
-        } else if recording.uploadStatus == .failed {
-            return "Failed"
-        } else if recording.uploadStatus == .uploading {
-            return "Uploading"
-        } else if recording.processingStatus == .processing {
-            return "Processing"
+        if let detail = recording.failureDetails {
+            return detail
         }
+
+        if recording.feedbackStatus == .complete {
+            return "Ready"
+        }
+
+        if recording.feedbackStatus == .processing {
+            return "Generating feedback"
+        }
+
+        if recording.transcriptionStatus == .processing {
+            return "Transcribing"
+        }
+
+        if recording.transcriptionStatus == .complete && recording.feedbackStatus == .pending {
+            return "Queued for feedback"
+        }
+
+        if recording.uploadStatus == .uploading {
+            return "Uploading"
+        }
+
         return "Pending"
     }
 }

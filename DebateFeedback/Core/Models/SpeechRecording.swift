@@ -17,9 +17,15 @@ final class SpeechRecording {
     var durationSeconds: Int
     var uploadStatus: UploadStatus
     var processingStatus: ProcessingStatus
+    var transcriptionStatus: ProcessingStatus
+    var feedbackStatus: ProcessingStatus
     var feedbackUrl: String?
     var speechId: String? // Backend speech ID for fetching feedback
     var feedbackContent: String? // Cached feedback content
+    var transcriptUrl: String?
+    var transcriptText: String?
+    var transcriptionErrorMessage: String?
+    var feedbackErrorMessage: String?
     var recordedAt: Date
     var uploadProgress: Double
 
@@ -41,9 +47,48 @@ final class SpeechRecording {
         self.durationSeconds = durationSeconds
         self.uploadStatus = .pending
         self.processingStatus = .pending
+        self.transcriptionStatus = .pending
+        self.feedbackStatus = .pending
         self.recordedAt = Date()
         self.uploadProgress = 0.0
         self.debateSession = debateSession
+    }
+}
+
+extension SpeechRecording {
+    /// Returns a synthesized status that mirrors the slowest stage
+    var aggregatedProcessingStatus: ProcessingStatus {
+        if feedbackStatus == .failed || transcriptionStatus == .failed {
+            return .failed
+        }
+
+        if feedbackStatus == .complete {
+            return .complete
+        }
+
+        if feedbackStatus == .processing || transcriptionStatus == .complete {
+            return .processing
+        }
+
+        if transcriptionStatus == .processing {
+            return .processing
+        }
+
+        return .pending
+    }
+
+    func updateAggregatedStatus() {
+        processingStatus = aggregatedProcessingStatus
+    }
+
+    var failureDetails: String? {
+        if transcriptionStatus == .failed {
+            return transcriptionErrorMessage ?? "Transcription failed"
+        }
+        if feedbackStatus == .failed {
+            return feedbackErrorMessage ?? "Feedback generation failed"
+        }
+        return nil
     }
 }
 
@@ -72,6 +117,24 @@ enum ProcessingStatus: String, Codable {
     case processing
     case complete
     case failed
+
+    init(apiStatus: String?) {
+        guard let value = apiStatus?.lowercased() else {
+            self = .pending
+            return
+        }
+
+        switch value {
+        case "processing", "running", "in_progress":
+            self = .processing
+        case "complete", "completed", "done":
+            self = .complete
+        case "failed", "error":
+            self = .failed
+        default:
+            self = .pending
+        }
+    }
 
     var displayName: String {
         switch self {

@@ -11,7 +11,7 @@ import Foundation
 @Observable
 final class AudioPlaybackService: NSObject {
     private var audioPlayer: AVAudioPlayer?
-    private var currentFileURL: URL?
+    private(set) var currentFileURL: URL?
 
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
@@ -22,7 +22,7 @@ final class AudioPlaybackService: NSObject {
 
     // MARK: - Playback Control
 
-    func play(from url: URL) throws {
+    func play(from url: URL, startingAt startTime: TimeInterval? = nil) throws {
         // Stop any current playback
         stop()
 
@@ -40,6 +40,12 @@ final class AudioPlaybackService: NSObject {
 
         duration = player.duration
         currentFileURL = url
+
+        if let startTime = startTime {
+            let clampedTime = max(0, min(startTime, player.duration))
+            player.currentTime = clampedTime
+            currentTime = clampedTime
+        }
 
         // Start playback
         guard player.play() else {

@@ -555,6 +555,7 @@ final class SetupViewModel {
 
     // MARK: - Debate Creation
 
+    @MainActor
     func createDebate(context: ModelContext, teacher: Teacher?) async -> DebateSession? {
         guard validateTeamAssignment() else {
             return nil

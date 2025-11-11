@@ -286,7 +286,14 @@ actor APIClient {
             let response = SpeechStatusResponse(
                 status: "complete",
                 googleDocUrl: "https://docs.google.com/document/d/mock_doc_id",
-                errorMessage: nil
+                errorMessage: nil,
+                transcriptionStatus: "completed",
+                transcriptionError: nil,
+                feedbackStatus: "completed",
+                feedbackError: nil,
+                transcriptUrl: "https://docs.google.com/document/d/mock_transcript_id",
+                transcriptText: "Mock transcript body",
+                transcriptDownloadUrl: nil
             )
             return response as! T
 
@@ -599,6 +606,90 @@ struct SpeechStatusResponse: Codable {
     let status: String
     let googleDocUrl: String?
     let errorMessage: String?
+    let transcriptionStatus: String?
+    let transcriptionError: String?
+    let feedbackStatus: String?
+    let feedbackError: String?
+    let transcriptUrl: String?
+    let transcriptText: String?
+    let transcriptDownloadUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case googleDocUrl = "google_doc_url"
+        case legacyGoogleDocUrl = "googleDocUrl"
+        case errorMessage = "error_message"
+        case legacyErrorMessage = "errorMessage"
+        case transcriptionStatus = "transcription_status"
+        case legacyTranscriptionStatus = "transcriptionStatus"
+        case transcriptionError = "transcription_error"
+        case feedbackStatus = "feedback_status"
+        case legacyFeedbackStatus = "feedbackStatus"
+        case feedbackError = "feedback_error"
+        case transcriptUrl = "transcript_url"
+        case legacyTranscriptUrl = "transcriptUrl"
+        case transcriptText = "transcript_text"
+        case legacyTranscriptText = "transcriptText"
+        case transcriptDownloadUrl = "transcript_download_url"
+        case legacyTranscriptDownloadUrl = "transcriptDownloadUrl"
+    }
+
+    init(status: String,
+         googleDocUrl: String?,
+         errorMessage: String?,
+         transcriptionStatus: String?,
+         transcriptionError: String?,
+         feedbackStatus: String?,
+         feedbackError: String?,
+         transcriptUrl: String?,
+         transcriptText: String?,
+         transcriptDownloadUrl: String?) {
+        self.status = status
+        self.googleDocUrl = googleDocUrl
+        self.errorMessage = errorMessage
+        self.transcriptionStatus = transcriptionStatus
+        self.transcriptionError = transcriptionError
+        self.feedbackStatus = feedbackStatus
+        self.feedbackError = feedbackError
+        self.transcriptUrl = transcriptUrl
+        self.transcriptText = transcriptText
+        self.transcriptDownloadUrl = transcriptDownloadUrl
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(String.self, forKey: .status)
+        googleDocUrl = try container.decodeIfPresent(String.self, forKey: .googleDocUrl)
+            ?? container.decodeIfPresent(String.self, forKey: .legacyGoogleDocUrl)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+            ?? container.decodeIfPresent(String.self, forKey: .legacyErrorMessage)
+        transcriptionStatus = try container.decodeIfPresent(String.self, forKey: .transcriptionStatus)
+            ?? container.decodeIfPresent(String.self, forKey: .legacyTranscriptionStatus)
+        transcriptionError = try container.decodeIfPresent(String.self, forKey: .transcriptionError)
+        feedbackStatus = try container.decodeIfPresent(String.self, forKey: .feedbackStatus)
+            ?? container.decodeIfPresent(String.self, forKey: .legacyFeedbackStatus)
+        feedbackError = try container.decodeIfPresent(String.self, forKey: .feedbackError)
+        transcriptUrl = try container.decodeIfPresent(String.self, forKey: .transcriptUrl)
+            ?? container.decodeIfPresent(String.self, forKey: .legacyTranscriptUrl)
+        transcriptText = try container.decodeIfPresent(String.self, forKey: .transcriptText)
+            ?? container.decodeIfPresent(String.self, forKey: .legacyTranscriptText)
+        transcriptDownloadUrl = try container.decodeIfPresent(String.self, forKey: .transcriptDownloadUrl)
+            ?? container.decodeIfPresent(String.self, forKey: .legacyTranscriptDownloadUrl)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(googleDocUrl, forKey: .googleDocUrl)
+        try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
+        try container.encodeIfPresent(transcriptionStatus, forKey: .transcriptionStatus)
+        try container.encodeIfPresent(transcriptionError, forKey: .transcriptionError)
+        try container.encodeIfPresent(feedbackStatus, forKey: .feedbackStatus)
+        try container.encodeIfPresent(feedbackError, forKey: .feedbackError)
+        try container.encodeIfPresent(transcriptUrl, forKey: .transcriptUrl)
+        try container.encodeIfPresent(transcriptText, forKey: .transcriptText)
+        try container.encodeIfPresent(transcriptDownloadUrl, forKey: .transcriptDownloadUrl)
+    }
 }
 
 struct FeedbackContentResponse: Codable {

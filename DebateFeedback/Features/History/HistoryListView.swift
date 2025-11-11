@@ -346,7 +346,7 @@ struct HistoryCard: View {
 
     private var completionRate: Double {
         guard let recordings = session.speechRecordings, !recordings.isEmpty else { return 0 }
-        let completed = recordings.filter { $0.processingStatus == .complete }.count
+        let completed = recordings.filter { $0.feedbackStatus == .complete }.count
         return Double(completed) / Double(recordings.count)
     }
 
