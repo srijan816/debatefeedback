@@ -18,12 +18,13 @@ class ThemeManager {
     }
 
     private init() {
-        // Load saved preference or default to system
+        // Load saved preference or default to dark
         if let savedTheme = UserDefaults.standard.string(forKey: Constants.UserDefaultsKeys.themePreference),
            let theme = Constants.Theme(rawValue: savedTheme) {
             self.currentTheme = theme
         } else {
-            self.currentTheme = .system
+            self.currentTheme = .dark
+            UserDefaults.standard.set(Constants.Theme.dark.rawValue, forKey: Constants.UserDefaultsKeys.themePreference)
         }
     }
 
