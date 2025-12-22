@@ -2,7 +2,6 @@
 //  TimerService.swift
 //  DebateFeedback
 //
-//  Created by Claude on 10/24/25.
 //
 
 import AVFoundation

@@ -1,0 +1,19 @@
+R_DEF: Internal format may change without notice
+local
+color md_theme_dark_background
+color md_theme_dark_onPrimary
+color md_theme_dark_primary
+color md_theme_light_background
+color md_theme_light_onPrimary
+color md_theme_light_primary
+drawable ic_launcher_background
+drawable ic_launcher_foreground
+drawable logo
+drawable mascot
+mipmap ic_launcher
+mipmap ic_launcher_round
+raw bell
+string app_name
+style Theme.DebateFeedback
+xml backup_rules
+xml data_extraction_rules

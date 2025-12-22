@@ -2,7 +2,6 @@
 //  AudioRecordingService.swift
 //  DebateFeedback
 //
-//  Created by Claude on 10/24/25.
 //
 
 import AVFoundation
@@ -83,11 +82,12 @@ final class AudioRecordingService: NSObject {
             return nil
         }
 
+        // Capture duration before stopping
+        let duration = recorder.currentTime
+        
         recorder.stop()
         isRecording = false
 
-        // Use recorder's current time as the duration
-        let duration = recorder.currentTime
         recordingDuration = duration
 
         currentRecordingURL = nil

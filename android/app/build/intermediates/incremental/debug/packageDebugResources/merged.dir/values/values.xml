@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="http://schemas.android.com/tools">
+    <color name="md_theme_dark_background">#121212</color>
+    <color name="md_theme_dark_onPrimary">#081630</color>
+    <color name="md_theme_dark_primary">#7FB5FF</color>
+    <color name="md_theme_light_background">#FFFFFF</color>
+    <color name="md_theme_light_onPrimary">#FFFFFF</color>
+    <color name="md_theme_light_primary">#3385F2</color>
+    <string name="app_name">DebateMate</string>
+    <style name="Theme.DebateFeedback" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/md_theme_light_primary</item>
+        <item name="android:statusBarColor" ns1:targetApi="l">@android:color/transparent</item>
+        <item name="android:navigationBarColor" ns1:targetApi="l">@android:color/transparent</item>
+    </style>
+</resources>

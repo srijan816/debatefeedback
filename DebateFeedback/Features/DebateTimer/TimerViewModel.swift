@@ -2,7 +2,6 @@
 //  TimerViewModel.swift
 //  DebateFeedback
 //
-//  Created by Claude on 10/24/25.
 //
 
 import Foundation
@@ -193,7 +192,12 @@ final class TimerViewModel {
 
         // Stop recording
         guard let result = audioService.stopRecording() else {
-            errorMessage = "Failed to stop recording"
+            // If recording failed or was already stopped, force reset state
+            isRecording = false
+            currentRecordingURL = nil
+            timerService.stop()
+            
+            errorMessage = "Recording failed or was stopped unexpectedly"
             showError = true
             return
         }
@@ -231,8 +235,8 @@ final class TimerViewModel {
 
         // Move to next speaker automatically
         if currentSpeakerIndex < speakers.count - 1 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.nextSpeaker()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.nextSpeaker()
             }
         }
     }

@@ -2,7 +2,6 @@
 //  AudioSessionHelper.swift
 //  DebateFeedback
 //
-//  Created by Claude on 10/24/25.
 //
 
 import AVFoundation
@@ -17,10 +16,13 @@ final class AudioSessionHelper {
     func configureForRecording() throws {
         let session = AVAudioSession.sharedInstance()
 
+
+
+        // Use new option for iOS 18+ compatibility while maintaining functionality
         try session.setCategory(
             .playAndRecord,
             mode: .default,
-            options: [.defaultToSpeaker, .allowBluetooth]
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
 
         try session.setActive(true)
@@ -41,22 +43,23 @@ final class AudioSessionHelper {
 
     /// Requests microphone permission
     func requestMicrophonePermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                continuation.resume(returning: granted)
+        if #available(iOS 17.0, *) {
+            return await AVAudioApplication.requestRecordPermission()
+        } else {
+            return await withCheckedContinuation { continuation in
+                AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                    continuation.resume(returning: granted)
+                }
             }
         }
     }
 
     /// Checks current microphone permission status
     var microphonePermissionStatus: Bool {
-        switch AVAudioSession.sharedInstance().recordPermission {
-        case .granted:
-            return true
-        case .denied, .undetermined:
-            return false
-        @unknown default:
-            return false
+        if #available(iOS 17.0, *) {
+            return AVAudioApplication.shared.recordPermission == .granted
+        } else {
+            return AVAudioSession.sharedInstance().recordPermission == .granted
         }
     }
 

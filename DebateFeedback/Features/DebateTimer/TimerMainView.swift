@@ -2,7 +2,6 @@
 //  TimerMainView.swift
 //  DebateFeedback
 //
-//  Created by Claude on 10/24/25.
 //
 
 import SwiftUI
@@ -170,14 +169,7 @@ struct TimerMainView: View {
                 HStack(spacing: 16) {
                     Spacer()
 
-                    Text(viewModel.formattedTime)
-                        .font(.system(size: Constants.timerFontSize, weight: .bold, design: .monospaced))
-                        .foregroundColor(viewModel.isOvertime ? .red : Constants.Colors.textPrimary)
-                        .accessibilityLabel("Timer")
-                        .accessibilityValue("\(viewModel.formattedTime)\(viewModel.isOvertime ? ", overtime" : "")")
-                        .onChange(of: viewModel.elapsedTime) { _, _ in
-                            viewModel.checkAndFireWarnings()
-                        }
+TimerTextView(viewModel: viewModel)
 
                     // Bell Icon
                     if viewModel.isRecording {

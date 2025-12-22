@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "Untitled design (16).png",
+      "filename" : "Untitled (1024 x 1024 px).png 1.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "Untitled design (16) 1.png",
+      "filename" : "Untitled (1024 x 1024 px).png 2.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -25,10 +25,27 @@
           "value" : "tinted"
         }
       ],
-      "filename" : "Untitled design (16) 2.png",
+      "filename" : "Untitled (1024 x 1024 px).png 3.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
+    },
+    {
+      "filename" : "Untitled design 2.PNG",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "Untitled (1024 x 1024 px).png.png",
+      "idiom" : "universal",
+      "scale" : "1x",
+      "size" : "1024x1024"
+    },
+    {
+      "filename" : "Untitled design.png",
+      "idiom" : "universal",
+      "scale" : "1x",
+      "unassigned" : true
     }
   ],
   "info" : {

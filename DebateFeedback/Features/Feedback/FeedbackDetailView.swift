@@ -2,7 +2,6 @@
 //  FeedbackDetailView.swift
 //  DebateFeedback
 //
-//  Created by Claude on 10/28/25.
 //
 
 import SwiftUI

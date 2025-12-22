@@ -2,7 +2,6 @@
 //  AuthView.swift
 //  DebateFeedback
 //
-//  Created by Claude on 10/24/25.
 //
 
 import SwiftUI
@@ -29,7 +28,7 @@ struct AuthView: View {
                     Image("mascot")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 180, height: 180)
+                        .frame(width: 225, height: 225)
 
                     Text("DebateMate")
                         .font(.system(size: 36, weight: .bold, design: .rounded))

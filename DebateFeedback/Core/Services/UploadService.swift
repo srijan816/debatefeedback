@@ -2,7 +2,6 @@
 //  UploadService.swift
 //  DebateFeedback
 //
-//  Created by Claude on 10/24/25.
 //
 
 import Foundation
@@ -37,7 +36,7 @@ final class UploadService: NSObject {
         activeUploads[uploadId] = task
 
         // Prepare metadata
-        let resolvedDuration = ensureDuration(for: recording, fileURL: task.fileURL)
+        let resolvedDuration = await ensureDuration(for: recording, fileURL: task.fileURL)
         let metadata: [String: Any] = [
             "speaker_name": recording.speakerName,
             "speaker_position": recording.speakerPosition,
@@ -98,7 +97,7 @@ final class UploadService: NSObject {
 
         print("Retrying upload (attempt \(attemptNumber + 1)) for \(recording.speakerName)...")
 
-        let resolvedDuration = ensureDuration(for: recording, fileURL: task.fileURL)
+        let resolvedDuration = await ensureDuration(for: recording, fileURL: task.fileURL)
         let metadata: [String: Any] = [
             "speaker_name": recording.speakerName,
             "speaker_position": recording.speakerPosition,
@@ -158,17 +157,29 @@ final class UploadService: NSObject {
 // MARK: - Duration Helpers
 
 private extension UploadService {
-    func ensureDuration(for recording: SpeechRecording, fileURL: URL) -> Int {
+    func ensureDuration(for recording: SpeechRecording, fileURL: URL) async -> Int {
         if recording.durationSeconds > 0 {
             return recording.durationSeconds
         }
 
         let asset = AVURLAsset(url: fileURL)
-        let seconds = CMTimeGetSeconds(asset.duration)
-        if seconds.isFinite, seconds > 0 {
-            let rounded = max(1, Int(round(seconds)))
-            recording.durationSeconds = rounded
-            return rounded
+        
+        do {
+            let duration: CMTime
+            if #available(iOS 16.0, *) {
+                duration = try await asset.load(.duration)
+            } else {
+                duration = asset.duration
+            }
+            
+            let seconds = CMTimeGetSeconds(duration)
+            if seconds.isFinite, seconds > 0 {
+                let rounded = max(1, Int(round(seconds)))
+                recording.durationSeconds = rounded
+                return rounded
+            }
+        } catch {
+            print("Failed to load asset duration: \(error)")
         }
 
         if let audioPlayer = try? AVAudioPlayer(contentsOf: fileURL) {
