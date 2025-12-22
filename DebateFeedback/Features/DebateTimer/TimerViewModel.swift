@@ -55,9 +55,8 @@ final class TimerViewModel {
 
     private func loadExistingRecordings() {
         if let existingRecordings = debateSession.speechRecordings {
-            self.recordings = existingRecordings.sorted { record1, record2 in
-                record1.createdAt < record2.createdAt
-            }
+            let standardArray: [SpeechRecording] = existingRecordings
+            self.recordings = standardArray.sorted { $0.createdAt < $1.createdAt }
         }
     }
 
