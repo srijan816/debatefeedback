@@ -56,8 +56,8 @@ enum Constants {
         // MARK: Dark Mode Colors
 
         // Background colors - Dark theme
-        static let darkBackgroundPrimary = Color(red: 0.11, green: 0.11, blue: 0.12) // #1c1c1f - Almost black
-        static let darkBackgroundSecondary = Color(red: 0.16, green: 0.16, blue: 0.18) // #28282e - Dark gray
+        static let darkBackgroundPrimary = Color.black // True black
+        static let darkBackgroundSecondary = Color(red: 0.10, green: 0.10, blue: 0.12) // Very dark gray
         static let darkBackgroundTertiary = Color(red: 0.20, green: 0.20, blue: 0.22) // #333338 - Lighter dark gray
         static let darkCardBackground = Color(red: 0.16, green: 0.16, blue: 0.18) // #28282e - Card background
 

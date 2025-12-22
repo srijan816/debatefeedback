@@ -51,7 +51,7 @@ struct DebateSetupView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Constants.Colors.backgroundLight, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
+            // Removed .toolbarColorScheme(.light) to allow dark mode adaptation
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Logout") {
@@ -980,6 +980,11 @@ struct StudentChip: View {
             .scaleEffect(isDragging ? 1.05 : 1.0)
             .opacity(isDragging ? 0.8 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
+            .onLongPressGesture(minimumDuration: 0.05, pressing: { pressing in
+                withAnimation(.easeInOut(duration: 0.1)) {
+                    isDragging = pressing
+                }
+            }) { } // Action handled by drag
             .draggable(student.id.uuidString)
             .accessibilityLabel("Student chip: \(student.name)")
             .accessibilityHint("Drag to assign to a team")

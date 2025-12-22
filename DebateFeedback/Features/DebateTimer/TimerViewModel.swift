@@ -49,7 +49,14 @@ final class TimerViewModel {
         self.timerService = TimerService(speechDuration: TimeInterval(debateSession.speechTimeSeconds))
 
         setupSpeakers()
+        loadExistingRecordings()
         checkMicrophonePermission()
+    }
+
+    private func loadExistingRecordings() {
+        if let existingRecordings = debateSession.speechRecordings {
+            self.recordings = existingRecordings.sorted { $0.createdAt < $1.createdAt }
+        }
     }
 
     // MARK: - Setup
