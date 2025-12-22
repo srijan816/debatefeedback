@@ -1,55 +1,55 @@
 {
-  "images" : [
+  "images": [
     {
-      "filename" : "Untitled (1024 x 1024 px).png 1.png",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
+      "filename": "Untitled (1024 x 1024 px).png 1.png",
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024"
     },
     {
-      "appearances" : [
+      "appearances": [
         {
-          "appearance" : "luminosity",
-          "value" : "dark"
+          "appearance": "luminosity",
+          "value": "dark"
         }
       ],
-      "filename" : "Untitled (1024 x 1024 px).png 2.png",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
+      "filename": "Untitled (1024 x 1024 px).png 2.png",
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024"
     },
     {
-      "appearances" : [
+      "appearances": [
         {
-          "appearance" : "luminosity",
-          "value" : "tinted"
+          "appearance": "luminosity",
+          "value": "tinted"
         }
       ],
-      "filename" : "Untitled (1024 x 1024 px).png 3.png",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
+      "filename": "Untitled (1024 x 1024 px).png 3.png",
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024"
     },
     {
-      "filename" : "Untitled design 2.PNG",
-      "idiom" : "universal",
-      "scale" : "1x"
+      "filename": "Untitled design 2.png",
+      "idiom": "universal",
+      "scale": "1x"
     },
     {
-      "filename" : "Untitled (1024 x 1024 px).png.png",
-      "idiom" : "universal",
-      "scale" : "1x",
-      "size" : "1024x1024"
+      "filename": "Untitled (1024 x 1024 px).png.png",
+      "idiom": "universal",
+      "scale": "1x",
+      "size": "1024x1024"
     },
     {
-      "filename" : "Untitled design.png",
-      "idiom" : "universal",
-      "scale" : "1x",
-      "unassigned" : true
+      "filename": "Untitled design.png",
+      "idiom": "universal",
+      "scale": "1x",
+      "unassigned": true
     }
   ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
+  "info": {
+    "author": "xcode",
+    "version": 1
   }
 }
