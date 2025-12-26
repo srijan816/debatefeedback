@@ -769,7 +769,7 @@ struct WebView: UIViewRepresentable {
         durationSeconds: 300,
         debateSession: nil
     )
-    recording.feedbackUrl = "http://144.217.164.110:12000/feedback/view/22"
+    recording.feedbackUrl = "https://api.genalphai.com/feedback/view/22"
     recording.transcriptionStatus = .complete
     recording.feedbackStatus = .complete
     recording.updateAggregatedStatus()
