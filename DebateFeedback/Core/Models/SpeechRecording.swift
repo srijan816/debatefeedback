@@ -3,6 +3,7 @@
 //  DebateFeedback
 //
 //
+//
 
 import Foundation
 import SwiftData
@@ -27,6 +28,17 @@ final class SpeechRecording {
     var feedbackErrorMessage: String?
     var recordedAt: Date
     var uploadProgress: Double
+    var playableMomentsData: Data?
+
+    var playableMoments: [PlayableMoment] {
+        get {
+            guard let data = playableMomentsData else { return [] }
+            return (try? JSONDecoder().decode([PlayableMoment].self, from: data)) ?? []
+        }
+        set {
+            playableMomentsData = try? JSONEncoder().encode(newValue)
+        }
+    }
 
     // Relationships
     var debateSession: DebateSession?
@@ -146,5 +158,81 @@ enum ProcessingStatus: String, Codable {
 
     var isComplete: Bool {
         self == .complete
+    }
+}
+
+struct PlayableMoment: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    let timestampLabel: String
+    let timestampSeconds: Double
+    let endTimestampSeconds: Double?
+    let summary: String
+    
+    enum CodingKeys: String, CodingKey {
+        case timestampLabel = "timestamp_label"
+        case timestampSeconds = "timestamp_seconds"
+        case summary = "issue"
+        case endTimestampSeconds = "end_timestamp_seconds"
+    }
+    
+    init(timestampLabel: String, timestampSeconds: Double, endTimestampSeconds: Double? = nil, summary: String) {
+        self.timestampLabel = timestampLabel
+        self.timestampSeconds = timestampSeconds
+        self.endTimestampSeconds = endTimestampSeconds
+        self.summary = summary
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let label = try container.decodeIfPresent(String.self, forKey: .timestampLabel) ?? "0:00"
+        timestampLabel = label
+        
+        let startSeconds = try container.decodeIfPresent(Double.self, forKey: .timestampSeconds) ?? 0.0
+        timestampSeconds = startSeconds
+        
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? "Feedback Point"
+        
+        // Check for explicit end time from backend
+        if let explicitEnd = try container.decodeIfPresent(Double.self, forKey: .endTimestampSeconds) {
+            endTimestampSeconds = explicitEnd
+        } else {
+            // Attempt to parse range from label (e.g. "0:30-1:00" or "0:30 to 1:00")
+            endTimestampSeconds = PlayableMoment.parseEndTime(from: label)
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(timestampLabel, forKey: .timestampLabel)
+        try container.encode(timestampSeconds, forKey: .timestampSeconds)
+        try container.encode(summary, forKey: .summary)
+        try container.encodeIfPresent(endTimestampSeconds, forKey: .endTimestampSeconds)
+    }
+    
+    // Helper to parse end time from strings like "0:30-1:00" or "0:30 to 1:00"
+    private static func parseEndTime(from label: String) -> Double? {
+        let separators = ["-", " to "]
+        for separator in separators {
+            if label.contains(separator) {
+                let parts = label.components(separatedBy: separator)
+                if parts.count == 2 {
+                    let endString = parts[1].trimmingCharacters(in: .whitespaces)
+                    return PlayableMoment.timeInterval(from: endString)
+                }
+            }
+        }
+        return nil
+    }
+    
+    private static func timeInterval(from timeString: String) -> Double? {
+        let parts = timeString.split(separator: ":").compactMap { Double($0) }
+        guard parts.count >= 2 else { return nil }
+
+        if parts.count == 2 {
+            return parts[0] * 60 + parts[1]
+        } else if parts.count == 3 {
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        }
+        return nil
     }
 }

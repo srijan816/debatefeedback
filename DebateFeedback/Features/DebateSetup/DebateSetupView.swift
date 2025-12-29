@@ -161,75 +161,29 @@ struct DebateSetupView: View {
                     .font(.headline)
                     .foregroundColor(Constants.Colors.textSecondary)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(DebateFormat.allCases, id: \.self) { format in
-                            Button {
-                                viewModel.selectedFormat = format
-                                viewModel.updateTimeDefaults()
-                            } label: {
-                                Text(format.displayName)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-                                    .background(
-                                        viewModel.selectedFormat == format ?
-                                        Constants.Gradients.primaryButton :
-                                        LinearGradient(colors: [Constants.Colors.backgroundSecondary], startPoint: .leading, endPoint: .trailing)
-                                    )
-                                    .foregroundColor(viewModel.selectedFormat == format ? .white : Constants.Colors.textPrimary)
-                                    .cornerRadius(20)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 20)
-                                            .stroke(
-                                                viewModel.selectedFormat == format ?
-                                                Constants.Colors.primaryBlue :
-                                                Constants.Colors.textTertiary.opacity(0.3),
-                                                lineWidth: viewModel.selectedFormat == format ? 2 : 1
-                                            )
-                                    )
-                            }
-                        }
+                Picker("Debate Format", selection: Binding(
+                    get: { viewModel.selectedFormat },
+                    set: { newValue in
+                        viewModel.selectedFormat = newValue
+                        viewModel.updateTimeDefaults()
+                    }
+                )) {
+                    ForEach(DebateFormat.allCases, id: \.self) { format in
+                        Text(format.displayName).tag(format)
                     }
                 }
+                .pickerStyle(.menu)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Constants.Colors.backgroundSecondary)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Constants.Colors.textTertiary.opacity(0.3), lineWidth: 1)
+                )
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Student Level")
-                    .font(.headline)
-                    .foregroundColor(Constants.Colors.textSecondary)
 
-                HStack(spacing: 12) {
-                    ForEach(StudentLevel.allCases, id: \.self) { level in
-                        Button {
-                            viewModel.studentLevel = level
-                        } label: {
-                            Text(level.displayName)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(
-                                    viewModel.studentLevel == level ?
-                                    LinearGradient(colors: [Constants.Colors.softPink], startPoint: .leading, endPoint: .trailing) :
-                                    LinearGradient(colors: [Constants.Colors.backgroundSecondary], startPoint: .leading, endPoint: .trailing)
-                                )
-                                .foregroundColor(viewModel.studentLevel == level ? .white : Constants.Colors.textPrimary)
-                                .cornerRadius(20)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .stroke(
-                                            viewModel.studentLevel == level ?
-                                            Constants.Colors.softPink :
-                                            Constants.Colors.textTertiary.opacity(0.3),
-                                            lineWidth: viewModel.studentLevel == level ? 2 : 1
-                                        )
-                                )
-                        }
-                    }
-                }
-            }
 
             // Time Settings Card
             VStack(alignment: .leading, spacing: 16) {
@@ -736,7 +690,7 @@ struct DebateSetupView: View {
 
             // Teams based on format
             switch viewModel.selectedFormat {
-            case .wsdc, .modifiedWsdc, .australs:
+            case .wsdc, .australs:
                 twoTeamLayout
             case .bp:
                 britishParliamentaryLayout
@@ -964,13 +918,13 @@ struct StudentChip: View {
 
     var body: some View {
         Text(student.name)
-            .font(.subheadline)
+            .font(.body) // Increased font size
             .fontWeight(.medium)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
             .background(Constants.Gradients.secondaryButton)
             .foregroundColor(.white)
-            .cornerRadius(20)
+            .cornerRadius(24)
             .shadow(
                 color: isDragging ? Constants.Colors.softPink.opacity(0.6) : Constants.Colors.softPink.opacity(0.3),
                 radius: isDragging ? 12 : 8,
@@ -1032,11 +986,12 @@ struct TeamDropZone: View {
                 ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
                     HStack {
                         Text("\(index + 1).")
-                            .font(.caption)
+                            .font(.body) // Increased font
                             .foregroundColor(Constants.Colors.textSecondary)
-                            .frame(width: 20)
+                            .frame(width: 24)
                         Text(student.name)
-                            .font(.subheadline)
+                            .font(.body) // Increased font
+                            .fontWeight(.medium)
                             .foregroundColor(Constants.Colors.textPrimary)
                         Spacer()
                         Button {
@@ -1044,34 +999,34 @@ struct TeamDropZone: View {
                             onRemove(student)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.caption)
+                                .font(.body)
                                 .foregroundColor(Constants.Colors.softPink)
                         }
                         .accessibilityLabel("Remove \(student.name)")
                         .accessibilityHint("Remove student from this team")
                     }
-                    .padding(10)
-                    .background(Constants.Colors.backgroundSecondary)
-                    .cornerRadius(10)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 4)
+                    // Removed background and border as requested ("dont keep that border just keep the text")
                     .transition(.scale.combined(with: .opacity))
                 }
 
                 if students.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: isTargeted ? "arrow.down.circle.fill" : "arrow.down.circle.dotted")
-                            .font(.title)
+                            .font(.system(size: 32)) // Increased size
                             .foregroundStyle(gradient)
                             .symbolEffect(.bounce, value: isTargeted)
                         Text(isTargeted ? "Drop here" : "Drop to add")
-                            .font(.caption)
+                            .font(.body) // Increased font
                             .fontWeight(isTargeted ? .semibold : .regular)
                             .foregroundColor(isTargeted ? Constants.Colors.textPrimary : Constants.Colors.textSecondary)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 30)
+                    .padding(.vertical, 40)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 150)
+            .frame(maxWidth: .infinity, minHeight: 300) // Increased minHeight to 300 ("taller on the bottom")
             .padding()
             .background(
                 RoundedRectangle(cornerRadius: 20)

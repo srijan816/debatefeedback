@@ -696,6 +696,7 @@ struct FeedbackContentResponse: Codable {
     let feedbackText: String
     let scores: [String: Double]?
     let sections: [FeedbackSection]?
+    let playableMoments: [PlayableMoment]?
 
     struct FeedbackSection: Codable {
         let title: String
@@ -707,6 +708,7 @@ struct FeedbackContentResponse: Codable {
         case feedbackText = "feedback_text"
         case scores
         case sections
+        case playableMoments = "playable_moments"
     }
 }
 

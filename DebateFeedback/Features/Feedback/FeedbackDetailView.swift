@@ -31,13 +31,28 @@ struct FeedbackDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             if availableDisplayModes.count > 1 {
-                Picker("View Mode", selection: $displayMode) {
+                HStack(spacing: 0) {
                     ForEach(availableDisplayModes) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        VStack(spacing: 8) {
+                            Text(mode.rawValue)
+                                .font(.subheadline)
+                                .fontWeight(displayMode == mode ? .semibold : .medium)
+                                .foregroundColor(displayMode == mode ? Constants.Colors.primaryAction : .secondary)
+                            
+                            Rectangle()
+                                .fill(displayMode == mode ? Constants.Colors.primaryAction : Color.clear)
+                                .frame(height: 2)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                displayMode = mode
+                            }
+                        }
                     }
                 }
-                .pickerStyle(.segmented)
-                .padding([.horizontal, .top])
+                .padding(.top)
+                .background(Color(uiColor: .systemBackground))
             }
 
             Group {
@@ -212,6 +227,26 @@ struct FeedbackDetailView: View {
                 }
 
                 Spacer()
+
+                Button {
+                    if playbackService.isPlaying {
+                        playbackService.pause()
+                    } else {
+                        // Resumes if paused/stopped but has file state; otherwise starts fresh
+                        if playbackService.currentFileURL != nil {
+                            playbackService.resume()
+                        } else {
+                            let fileURL = URL(fileURLWithPath: recording.localFilePath)
+                            try? playbackService.play(from: fileURL)
+                            activeMomentID = nil
+                        }
+                    }
+                } label: {
+                    Image(systemName: playbackService.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 44))
+                        .foregroundColor(Constants.Colors.primaryAction)
+                }
+                .padding(.trailing, 8)
 
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("Duration")
@@ -412,8 +447,12 @@ struct FeedbackDetailView: View {
             sections = buildSections(from: response)
 
             recording.feedbackContent = feedbackContent
+            if let moments = response.playableMoments {
+                recording.playableMoments = moments
+            }
+            
             await MainActor.run {
-                // Persisting would require access to ModelContext
+                // Persisting handles by SwiftData autosave on main context usually
             }
 
             isLoading = false
@@ -426,17 +465,38 @@ struct FeedbackDetailView: View {
     // MARK: - Parse Feedback
 
     private func buildSections(from response: FeedbackContentResponse) -> [FeedbackSectionData] {
+        var resultSections: [FeedbackSectionData] = []
+        
+        // 1. Use backend sections if available
         if let responseSections = response.sections, !responseSections.isEmpty {
-            return responseSections.map { section in
+            resultSections = responseSections.map { section in
                 FeedbackSectionData(
                     title: section.title,
                     content: section.content,
-                    playableMoments: section.title.lowercased().contains("playable") ? extractPlayableMoments(from: section.content) : []
+                    playableMoments: []
                 )
             }
+        } else {
+            // 2. Fallback to text parsing
+            resultSections = parseFeedbackSections(from: response.feedbackText)
         }
-
-        return parseFeedbackSections(from: response.feedbackText)
+        
+        // 3. Inject Structured Playable Moments
+        if let moments = response.playableMoments, !moments.isEmpty {
+            if let index = resultSections.firstIndex(where: { $0.title.lowercased().contains("playable") }) {
+                let existing = resultSections[index]
+                resultSections[index] = FeedbackSectionData(title: existing.title, content: existing.content, playableMoments: moments)
+            } else {
+                // Always add Playable Moments as the first section if not present
+                let specialSection = FeedbackSectionData(title: "Playable Moments", content: "", playableMoments: moments)
+                resultSections.insert(specialSection, at: 0)
+            }
+        } else if resultSections.isEmpty && !response.feedbackText.isEmpty {
+             // If we have text but no sections and no API moments, try to see if we have cached moments?
+             // Or just rely on what we parsed.
+        }
+        
+        return resultSections
     }
 
     private func parseFeedbackSections(from content: String) -> [FeedbackSectionData] {
@@ -452,7 +512,7 @@ struct FeedbackDetailView: View {
                 return
             }
 
-            let moments = currentTitle.lowercased().contains("playable") ? extractPlayableMoments(from: body) : []
+            let moments: [PlayableMoment] = [] // Structured moments are injected in buildSections
             sections.append(FeedbackSectionData(title: currentTitle, content: body, playableMoments: moments))
             currentLines.removeAll()
         }
@@ -480,7 +540,7 @@ struct FeedbackDetailView: View {
             sections.append(FeedbackSectionData(
                 title: "AI Feedback",
                 content: content.trimmingCharacters(in: .whitespacesAndNewlines),
-                playableMoments: extractPlayableMoments(from: content)
+                playableMoments: [] // Structured moments come from API
             ))
         }
 
@@ -496,77 +556,36 @@ struct FeedbackDetailView: View {
         return knownHeaders.contains { line.lowercased().starts(with: $0) }
     }
 
-    private func extractPlayableMoments(from content: String) -> [PlayableMoment] {
-        let lines = content.components(separatedBy: .newlines)
-        let pattern = #"(?:(\d{1,2}):)?(\d{1,2}):(\d{2})"#
-        let regex = try? NSRegularExpression(pattern: pattern, options: [])
-        var moments: [PlayableMoment] = []
 
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let regex = regex else { break }
-            let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
-            guard let match = regex.firstMatch(in: trimmed, options: [], range: range),
-                  let matchRange = Range(match.range, in: trimmed) else { continue }
-
-            let timeString = String(trimmed[matchRange])
-            guard let seconds = timeInterval(from: timeString) else { continue }
-
-            let descriptionRaw = trimmed[matchRange.upperBound...]
-            let description = descriptionRaw
-                .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "-–—:"))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            let summary = description.isEmpty ? "Moment at \(timeString)" : description
-            moments.append(PlayableMoment(timestampLabel: timeString, timestampSeconds: seconds, summary: summary))
-        }
-
-        return moments.sorted { $0.timestampSeconds < $1.timestampSeconds }
-    }
-
-    private func timeInterval(from timeString: String) -> TimeInterval? {
-        let parts = timeString.split(separator: ":").compactMap { Double($0) }
-        guard parts.count >= 2 else { return nil }
-
-        if parts.count == 2 {
-            return parts[0] * 60 + parts[1]
-        } else if parts.count == 3 {
-            return parts[0] * 3600 + parts[1] * 60 + parts[2]
-        }
-
-        return nil
-    }
 
     private func playMoment(_ moment: PlayableMoment) {
         let fileURL = URL(fileURLWithPath: recording.localFilePath)
-
+        
+        // Ensure file exists
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            playbackErrorMessage = "The local recording file could not be found."
+            playbackErrorMessage = "Audio file not found."
             return
         }
 
-        do {
-            if activeMomentID == moment.id {
-                if playbackService.isPlaying {
-                    playbackService.pause()
-                } else {
-                    playbackService.resume()
-                }
-                return
+        // Logic to handle existing playback
+        if activeMomentID == moment.id && playbackService.isPlaying {
+            playbackService.pause()
+        } else {
+            // Force stop and partial playback
+            // We specifically stop first to ensure a clean state
+            playbackService.stop()
+            
+            do {
+                try playbackService.play(
+                    from: fileURL,
+                    startingAt: moment.timestampSeconds,
+                    endingAt: moment.endTimestampSeconds
+                )
+                activeMomentID = moment.id
+            } catch {
+                print("❌ Playback failed: \(error.localizedDescription)")
+                playbackErrorMessage = "Could not play audio."
             }
-
-            if playbackService.currentFileURL == fileURL {
-                playbackService.seek(to: moment.timestampSeconds)
-                if !playbackService.isPlaying {
-                    playbackService.resume()
-                }
-            } else {
-                try playbackService.play(from: fileURL, startingAt: moment.timestampSeconds)
-            }
-            activeMomentID = moment.id
-        } catch {
-            playbackErrorMessage = error.localizedDescription
         }
     }
 }
@@ -654,12 +673,7 @@ struct FeedbackSectionData: Identifiable {
     let playableMoments: [PlayableMoment]
 }
 
-struct PlayableMoment: Identifiable, Equatable {
-    let id = UUID()
-    let timestampLabel: String
-    let timestampSeconds: TimeInterval
-    let summary: String
-}
+
 
 enum FeedbackDisplayMode: String, Identifiable, CaseIterable {
     case highlights = "Highlights"

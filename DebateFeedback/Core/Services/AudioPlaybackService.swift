@@ -21,7 +21,11 @@ final class AudioPlaybackService: NSObject {
 
     // MARK: - Playback Control
 
-    func play(from url: URL, startingAt startTime: TimeInterval? = nil) throws {
+    private(set) var endTime: TimeInterval?
+
+    // MARK: - Playback Control
+
+    func play(from url: URL, startingAt startTime: TimeInterval? = nil, endingAt endTime: TimeInterval? = nil) throws {
         // Stop any current playback
         stop()
 
@@ -39,6 +43,7 @@ final class AudioPlaybackService: NSObject {
 
         duration = player.duration
         currentFileURL = url
+        self.endTime = endTime
 
         if let startTime = startTime {
             let clampedTime = max(0, min(startTime, player.duration))
@@ -66,6 +71,15 @@ final class AudioPlaybackService: NSObject {
     func resume() {
         guard let player = audioPlayer, !isPlaying else { return }
 
+        // If we finished playing a range and user hits resume, check if we should clear endTime or specific behavior?
+        // Typically resume just continues from where it is. If we are past endTime, maybe we should clear it?
+        // For simplicity, let's keep endTime. If we are past it, we might stop immediately in the timer loop, 
+        // effectively preventing playback past the point unless user seeks back.
+        // OR we clear it on resume? Let's keep it simple: strict range unless cleared.
+        // But user might want to continue listening. Let's clear endTime on manual resume/seek if needed?
+        // Standard behavior: resume continues. If strict range was for "Preview", maybe.
+        // Let's assume play(range) sets it. Resume keeps it.
+        
         player.play()
         isPlaying = true
         startProgressTimer()
@@ -75,6 +89,7 @@ final class AudioPlaybackService: NSObject {
         audioPlayer?.stop()
         isPlaying = false
         currentTime = 0
+        endTime = nil
         stopProgressTimer()
         audioPlayer = nil
         currentFileURL = nil
@@ -95,6 +110,16 @@ final class AudioPlaybackService: NSObject {
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self, let player = self.audioPlayer else { return }
             self.currentTime = player.currentTime
+            
+            // Check for end time
+            if let end = self.endTime, self.currentTime >= end {
+                self.pause() // Pause instead of stop to keep player active? 
+                // Or stop? The instruction says "audio should stop".
+                // If we stop(), we lose state. Pause seems better.
+                // But typically range playback stops.
+                self.pause()
+                // Maybe seek back to start? No, just pause at end is fine.
+            }
         }
     }
 

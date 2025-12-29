@@ -523,7 +523,7 @@ final class SetupViewModel {
 
     private func validateTeamAssignment() -> Bool {
         switch selectedFormat {
-        case .wsdc, .modifiedWsdc, .australs:
+        case .wsdc, .australs:
             if propTeam.isEmpty || oppTeam.isEmpty {
                 errorMessage = Constants.ErrorMessages.noStudentsSelected
                 showError = true
@@ -575,7 +575,7 @@ final class SetupViewModel {
         // Set team composition
         var composition = TeamComposition()
         switch selectedFormat {
-        case .wsdc, .modifiedWsdc, .australs:
+        case .wsdc, .australs:
             composition.prop = propTeam.map { $0.id.uuidString }
             composition.opp = oppTeam.map { $0.id.uuidString }
         case .bp:
@@ -684,7 +684,7 @@ final class SetupViewModel {
         }
 
         switch selectedFormat {
-        case .wsdc, .modifiedWsdc, .australs:
+        case .wsdc, .australs:
             if let propIds = composition.prop {
                 teamsData.prop = propIds.enumerated().map { index, id in
                     let student = students.first(where: { $0.id.uuidString == id })

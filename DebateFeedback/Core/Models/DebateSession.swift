@@ -72,7 +72,6 @@ final class DebateSession {
 
 enum DebateFormat: String, Codable, CaseIterable {
     case wsdc = "WSDC"
-    case modifiedWsdc = "Modified WSDC"
     case bp = "BP"
     case ap = "AP"
     case australs = "Australs"
@@ -82,7 +81,6 @@ enum DebateFormat: String, Codable, CaseIterable {
     var defaultSpeechTime: Int {
         switch self {
         case .wsdc: return 480 // 8 minutes
-        case .modifiedWsdc: return 240 // 4 minutes
         case .bp: return 420 // 7 minutes
         case .ap: return 360 // 6 minutes
         case .australs: return 480 // 8 minutes
@@ -91,7 +89,7 @@ enum DebateFormat: String, Codable, CaseIterable {
 
     var hasReplySpeeches: Bool {
         switch self {
-        case .wsdc, .modifiedWsdc, .australs: return true
+        case .wsdc, .australs: return true
         case .bp, .ap: return false
         }
     }
@@ -99,7 +97,6 @@ enum DebateFormat: String, Codable, CaseIterable {
     var defaultReplyTime: Int? {
         switch self {
         case .wsdc: return 240 // 4 minutes
-        case .modifiedWsdc: return 120 // 2 minutes
         case .australs: return 180 // 3 minutes
         case .bp, .ap: return nil
         }
@@ -107,7 +104,7 @@ enum DebateFormat: String, Codable, CaseIterable {
 
     var teamStructure: TeamStructure {
         switch self {
-        case .wsdc, .modifiedWsdc, .australs:
+        case .wsdc, .australs:
             return .propOpp
         case .bp:
             return .britishParliamentary
@@ -137,7 +134,7 @@ struct TeamComposition: Codable {
     // Helper to get all speaker positions in order
     func getSpeakerOrder(format: DebateFormat) -> [(studentId: String, position: String)] {
         switch format {
-        case .wsdc, .modifiedWsdc, .australs:
+        case .wsdc, .australs:
             // Alternate between Prop and Opp: Prop 1, Opp 1, Prop 2, Opp 2, Prop 3, Opp 3
             var speakers: [(String, String)] = []
             let propSpeakers = prop ?? []

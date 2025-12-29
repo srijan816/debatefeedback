@@ -18,7 +18,8 @@ final class DataController {
             DebateSession.self,
             SpeechRecording.self,
             Student.self,
-            Teacher.self
+            Teacher.self,
+            UploadRequest.self
         ])
 
         let modelConfiguration = ModelConfiguration(

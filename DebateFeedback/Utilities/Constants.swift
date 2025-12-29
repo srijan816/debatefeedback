@@ -10,14 +10,21 @@ enum Constants {
 
     // MARK: - API Configuration
     enum API {
+        #if DEBUG
+        // Note: To use localhost, App Transport Security (ATS) must be configured in Info.plist to allow arbitrary loads.
+        // Defaulting to production for now to ensure it works out of the box.
+        // static let baseURL = "http://localhost:3000/api" 
         static let baseURL = "https://api.genalphai.com/api"
+        static let useMockData = false
+        #else
+        static let baseURL = "https://api.genalphai.com/api"
+        static let useMockData = false
+        #endif
+        
         static let requestTimeout: TimeInterval = 30.0
         static let uploadTimeout: TimeInterval = 120.0
         static let maxRetryAttempts = 3
         static let feedbackPollingInterval: TimeInterval = 5.0
-
-        // Development mode
-        static var useMockData = false
     }
 
     // MARK: - Audio Configuration
@@ -253,7 +260,7 @@ enum Constants {
     }
 
     // MARK: - Debate Formats
-    static let debateFormats: [DebateFormat] = [.wsdc, .modifiedWsdc, .bp, .ap, .australs]
+    static let debateFormats: [DebateFormat] = [.wsdc, .bp, .ap, .australs]
 
     // MARK: - Validation
     enum Validation {
