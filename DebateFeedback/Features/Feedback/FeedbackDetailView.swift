@@ -444,6 +444,21 @@ struct FeedbackDetailView: View {
                 endpoint: .getFeedbackContent(speechId: speechId)
             )
 
+            // DIAGNOSTIC LOGGING - Phase 1
+            print("========== FEEDBACK RESPONSE DIAGNOSTICS ==========")
+            print("📥 speechId: \(response.speechId)")
+            print("📥 feedbackText length: \(response.feedbackText.count) chars")
+            print("📥 playableMoments: \(response.playableMoments?.count ?? 0) items")
+            if let moments = response.playableMoments {
+                for (index, moment) in moments.enumerated() {
+                    print("   [\(index)] \(moment.timestampLabel) @ \(moment.timestampSeconds)s - \(moment.endTimestampSeconds ?? -1)s: \(moment.summary.prefix(50))...")
+                }
+            }
+            print("📥 audioUrl: \(response.audioUrl ?? "⚠️ NIL - BACKEND NOT SENDING audio_url")")
+            print("📥 scores: \(response.scores?.description ?? "nil")")
+            print("📥 sections: \(response.sections?.count ?? 0) sections")
+            print("===================================================")
+
             feedbackContent = response.feedbackText
             sections = buildSections(from: response)
 
@@ -453,8 +468,10 @@ struct FeedbackDetailView: View {
             }
             
             if let urlString = response.audioUrl, let url = URL(string: urlString) {
-                print("Checking remote audio URL: \(url)")
+                print("✅ Remote audio URL set: \(url)")
                 self.remoteAudioUrl = url
+            } else {
+                print("⚠️ No remote audio URL - playback will fail if local file is missing")
             }
             
             await MainActor.run {
@@ -463,6 +480,7 @@ struct FeedbackDetailView: View {
 
             isLoading = false
         } catch {
+            print("❌ loadFeedback FAILED: \(error.localizedDescription)")
             errorMessage = "Feedback is ready in Google Docs. Tap the menu to open it."
             isLoading = false
         }
@@ -565,18 +583,36 @@ struct FeedbackDetailView: View {
 
 
     private func playMoment(_ moment: PlayableMoment) {
+        // DIAGNOSTIC LOGGING - Phase 1
+        print("========== PLAY MOMENT DIAGNOSTICS ==========")
+        print("🎯 Requested moment: \(moment.timestampLabel) @ \(moment.timestampSeconds)s")
+        print("📁 recording.localFilePath: \(recording.localFilePath)")
+        
         // 1. Try to resolve the local file dynamically
         let localURL = FileManager.default.resolveCurrentPath(for: recording.localFilePath)
+        print("📂 Resolved localURL: \(localURL?.path ?? "❌ NIL - file not found")")
+        print("🌐 remoteAudioUrl: \(remoteAudioUrl?.absoluteString ?? "❌ NIL - backend didn't send audio_url")")
         
         // 2. Determine which URL to use (Local > Remote)
         guard let playURL = localURL ?? remoteAudioUrl else {
-            playbackErrorMessage = "Audio file not found locally or on server."
+            let diagnosticError = """
+            ❌ PLAYBACK FAILED - NO AUDIO SOURCE
+            • Local file not found at: \(recording.localFilePath)
+            • Remote URL: \(remoteAudioUrl?.absoluteString ?? "NOT PROVIDED BY BACKEND")
+            
+            FIX: Backend must return 'audio_url' in /speeches/{id}/feedback response
+            """
+            print(diagnosticError)
+            playbackErrorMessage = "Audio unavailable. Local file missing, backend didn't provide URL."
             return
         }
+        
+        print("✅ Using playURL: \(playURL.path)")
+        print("==============================================")
 
         do {
             if activeMomentID == moment.id {
-                print("info: Toggling playback for active moment")
+                print("ℹ️ Toggling playback for active moment")
                 if playbackService.isPlaying {
                     playbackService.pause()
                 } else {
@@ -587,15 +623,13 @@ struct FeedbackDetailView: View {
 
             // Check if we are already playing this specific URL
             if playbackService.currentFileURL == playURL {
-                 // Seek to the start of the moment if it's the same file
-                 // If we are already playing, we just seek.
-                 // If paused, we seek and resume.
+                 print("ℹ️ Same file - seeking to \(moment.timestampSeconds)s")
                  playbackService.seek(to: moment.timestampSeconds)
                  if !playbackService.isPlaying {
                      playbackService.resume()
                  }
             } else {
-                print("info: Starting new playback from \(playURL.lastPathComponent)")
+                print("▶️ Starting new playback from \(playURL.lastPathComponent)")
                 try playbackService.play(
                     from: playURL,
                     startingAt: moment.timestampSeconds,
