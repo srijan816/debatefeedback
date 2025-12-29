@@ -78,6 +78,15 @@ actor APIClient {
                 let decoded = try decoder.decode(T.self, from: data)
                 return decoded
             } catch {
+                // DIAGNOSTIC: Print raw response and decoding error
+                print("========== DECODING ERROR DIAGNOSTICS ==========")
+                print("❌ Failed to decode response as: \(T.self)")
+                print("📦 Raw response data (\(data.count) bytes):")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print(jsonString.prefix(2000)) // Print first 2000 chars
+                }
+                print("🔥 Decoding error: \(error)")
+                print("================================================")
                 throw NetworkError.decodingError
             }
 
@@ -693,24 +702,33 @@ struct SpeechStatusResponse: Codable {
 
 struct FeedbackContentResponse: Codable {
     let speechId: String
-    let feedbackText: String
+    let googleDocUrl: String?
     let scores: [String: Double]?
-    let sections: [FeedbackSection]?
+    let qualitativeFeedback: QualitativeFeedback?
     let playableMoments: [PlayableMoment]?
     let audioUrl: String?
+
+    struct QualitativeFeedback: Codable {
+        let feedbackText: String?
+    }
 
     struct FeedbackSection: Codable {
         let title: String
         let content: String
     }
 
-    enum CodingKeys: String, CodingKey {
-        case speechId = "speech_id"
-        case feedbackText = "feedback_text"
-        case scores
-        case sections
-        case playableMoments = "playable_moments"
-        case audioUrl = "audio_url"
+    // Note: No explicit CodingKeys needed - decoder uses .convertFromSnakeCase
+    // which automatically converts:
+    //   speech_id -> speechId
+    //   google_doc_url -> googleDocUrl
+    //   qualitative_feedback -> qualitativeFeedback
+    //   feedback_text -> feedbackText
+    //   playable_moments -> playableMoments
+    //   audio_url -> audioUrl
+    
+    /// Helper to get feedbackText from nested qualitativeFeedback
+    var feedbackText: String {
+        qualitativeFeedback?.feedbackText ?? ""
     }
 }
 

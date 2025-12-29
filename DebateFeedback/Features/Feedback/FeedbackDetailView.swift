@@ -456,7 +456,6 @@ struct FeedbackDetailView: View {
             }
             print("📥 audioUrl: \(response.audioUrl ?? "⚠️ NIL - BACKEND NOT SENDING audio_url")")
             print("📥 scores: \(response.scores?.description ?? "nil")")
-            print("📥 sections: \(response.sections?.count ?? 0) sections")
             print("===================================================")
 
             feedbackContent = response.feedbackText
@@ -491,19 +490,8 @@ struct FeedbackDetailView: View {
     private func buildSections(from response: FeedbackContentResponse) -> [FeedbackSectionData] {
         var resultSections: [FeedbackSectionData] = []
         
-        // 1. Use backend sections if available
-        if let responseSections = response.sections, !responseSections.isEmpty {
-            resultSections = responseSections.map { section in
-                FeedbackSectionData(
-                    title: section.title,
-                    content: section.content,
-                    playableMoments: []
-                )
-            }
-        } else {
-            // 2. Fallback to text parsing
-            resultSections = parseFeedbackSections(from: response.feedbackText)
-        }
+        // Parse sections from feedback text
+        resultSections = parseFeedbackSections(from: response.feedbackText)
         
         // 3. Inject Structured Playable Moments
         if let moments = response.playableMoments, !moments.isEmpty {
