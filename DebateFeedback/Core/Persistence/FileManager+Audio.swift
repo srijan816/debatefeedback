@@ -81,4 +81,43 @@ extension FileManager {
         }
         return attributes[.size] as? Int64
     }
+    
+    /// Resolves the current absolute path for a file, handling iOS Sandbox Container rotation.
+    ///
+    /// The iOS app container path changes on every update or reinstall (UUID rotation).
+    /// Stored absolute paths become invalid. This method attempts to find the file
+    /// relative to the current Documents directory if the absolute path fails.
+    ///
+    /// - Parameter savedPath: The absolute path string stored in the database.
+    /// - Returns: A valid URL if the file is found; otherwise nil.
+    func resolveCurrentPath(for savedPath: String) -> URL? {
+        let absoluteURL = URL(fileURLWithPath: savedPath)
+        
+        // 1. Try the saved path directly (fast path, works if container hasn't rotated)
+        if fileExists(atPath: absoluteURL.path) {
+            return absoluteURL
+        }
+        
+        // 2. Try resolving relative to the current Documents directory
+        // Extract the filename from the saved path
+        let fileName = absoluteURL.lastPathComponent
+        
+        // Get the current valid Documents directory
+        let currentDocuments = urls(for: .documentDirectory, in: .userDomainMask)[0]
+        
+        // Construct the new dynamic path
+        // Try in "Recordings" (Constants.Files.audioDirectory) first as that is default
+        let recordingsURL = currentDocuments.appendingPathComponent(Constants.Files.audioDirectory).appendingPathComponent(fileName)
+        if fileExists(atPath: recordingsURL.path) {
+            return recordingsURL
+        }
+
+        // Try directly in Documents (just in case)
+        let rootDynamicURL = currentDocuments.appendingPathComponent(fileName)
+        if fileExists(atPath: rootDynamicURL.path) {
+            return rootDynamicURL
+        }
+        
+        return nil
+    }
 }

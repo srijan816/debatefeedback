@@ -21,6 +21,7 @@ struct FeedbackDetailView: View {
     @State private var activeMomentID: UUID?
     @State private var playbackErrorMessage: String?
     @State private var displayMode: FeedbackDisplayMode
+    @State private var remoteAudioUrl: URL?
 
     init(recording: SpeechRecording) {
         self.recording = recording
@@ -451,6 +452,11 @@ struct FeedbackDetailView: View {
                 recording.playableMoments = moments
             }
             
+            if let urlString = response.audioUrl, let url = URL(string: urlString) {
+                print("Checking remote audio URL: \(url)")
+                self.remoteAudioUrl = url
+            }
+            
             await MainActor.run {
                 // Persisting handles by SwiftData autosave on main context usually
             }
@@ -559,33 +565,47 @@ struct FeedbackDetailView: View {
 
 
     private func playMoment(_ moment: PlayableMoment) {
-        let fileURL = URL(fileURLWithPath: recording.localFilePath)
+        // 1. Try to resolve the local file dynamically
+        let localURL = FileManager.default.resolveCurrentPath(for: recording.localFilePath)
         
-        // Ensure file exists
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            playbackErrorMessage = "Audio file not found."
+        // 2. Determine which URL to use (Local > Remote)
+        guard let playURL = localURL ?? remoteAudioUrl else {
+            playbackErrorMessage = "Audio file not found locally or on server."
             return
         }
 
-        // Logic to handle existing playback
-        if activeMomentID == moment.id && playbackService.isPlaying {
-            playbackService.pause()
-        } else {
-            // Force stop and partial playback
-            // We specifically stop first to ensure a clean state
-            playbackService.stop()
-            
-            do {
+        do {
+            if activeMomentID == moment.id {
+                print("info: Toggling playback for active moment")
+                if playbackService.isPlaying {
+                    playbackService.pause()
+                } else {
+                    playbackService.resume()
+                }
+                return
+            }
+
+            // Check if we are already playing this specific URL
+            if playbackService.currentFileURL == playURL {
+                 // Seek to the start of the moment if it's the same file
+                 // If we are already playing, we just seek.
+                 // If paused, we seek and resume.
+                 playbackService.seek(to: moment.timestampSeconds)
+                 if !playbackService.isPlaying {
+                     playbackService.resume()
+                 }
+            } else {
+                print("info: Starting new playback from \(playURL.lastPathComponent)")
                 try playbackService.play(
-                    from: fileURL,
+                    from: playURL,
                     startingAt: moment.timestampSeconds,
                     endingAt: moment.endTimestampSeconds
                 )
-                activeMomentID = moment.id
-            } catch {
-                print("❌ Playback failed: \(error.localizedDescription)")
-                playbackErrorMessage = "Could not play audio."
             }
+            activeMomentID = moment.id
+        } catch {
+            print("❌ Playback error: \(error.localizedDescription)")
+            playbackErrorMessage = "Playback failed: \(error.localizedDescription)"
         }
     }
 }
