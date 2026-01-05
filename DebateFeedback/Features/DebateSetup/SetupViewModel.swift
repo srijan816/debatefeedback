@@ -413,34 +413,39 @@ final class SetupViewModel {
     // MARK: - Team Assignment
 
     func assignToTeam(_ student: Student, team: TeamType) {
-        // Remove from all teams first
-        removeFromAllTeams(student)
+        assignToTeam(student, team: team, position: nil)
+    }
 
-        // Add to specified team
-        var position = 0
-        switch team {
-        case .prop:
-            propTeam.append(student)
-            position = propTeam.count
-        case .opp:
-            oppTeam.append(student)
-            position = oppTeam.count
-        case .og:
-            ogTeam.append(student)
-            position = ogTeam.count
-        case .oo:
-            ooTeam.append(student)
-            position = ooTeam.count
-        case .cg:
-            cgTeam.append(student)
-            position = cgTeam.count
-        case .co:
-            coTeam.append(student)
-            position = coTeam.count
+    func assignToTeam(_ student: Student, team: TeamType, position: Int?) {
+        let maxSlots = maxSlots(for: team)
+        let targetIndex = max(0, (position ?? maxSlots) - 1)
+
+        if let currentTeam = teamForStudent(student),
+           currentTeam == team,
+           let currentIndex = indexOfStudent(student, in: team) {
+            let clampedTarget = min(max(targetIndex, 0), max(teamStudents(for: team).count - 1, 0))
+            if currentIndex != clampedTarget {
+                reorderTeam(team, from: currentIndex, to: clampedTarget)
+            }
+            return
         }
 
-        // Track student assigned
-        AnalyticsService.shared.logSetupStudentAssigned(team: team.rawValue, position: position)
+        removeFromAllTeams(student)
+
+        var teamList = teamStudents(for: team)
+        let insertIndex = min(max(targetIndex, 0), teamList.count)
+        teamList.insert(student, at: insertIndex)
+
+        if teamList.count > maxSlots {
+            teamList.removeLast()
+        }
+
+        setTeamStudents(team, students: teamList)
+
+        AnalyticsService.shared.logSetupStudentAssigned(
+            team: team.rawValue,
+            position: min(insertIndex + 1, maxSlots)
+        )
     }
 
     func removeFromAllTeams(_ student: Student) {
@@ -450,6 +455,66 @@ final class SetupViewModel {
         ooTeam.removeAll { $0.id == student.id }
         cgTeam.removeAll { $0.id == student.id }
         coTeam.removeAll { $0.id == student.id }
+    }
+
+    func maxSlots(for team: TeamType) -> Int {
+        switch selectedFormat.teamStructure {
+        case .propOpp:
+            return 3
+        case .britishParliamentary:
+            return 2
+        case .asianParliamentary:
+            return 2
+        }
+    }
+
+    private func teamStudents(for team: TeamType) -> [Student] {
+        switch team {
+        case .prop:
+            return propTeam
+        case .opp:
+            return oppTeam
+        case .og:
+            return ogTeam
+        case .oo:
+            return ooTeam
+        case .cg:
+            return cgTeam
+        case .co:
+            return coTeam
+        }
+    }
+
+    private func setTeamStudents(_ team: TeamType, students: [Student]) {
+        switch team {
+        case .prop:
+            propTeam = students
+        case .opp:
+            oppTeam = students
+        case .og:
+            ogTeam = students
+        case .oo:
+            ooTeam = students
+        case .cg:
+            cgTeam = students
+        case .co:
+            coTeam = students
+        }
+    }
+
+    private func indexOfStudent(_ student: Student, in team: TeamType) -> Int? {
+        let teamList = teamStudents(for: team)
+        return teamList.firstIndex(where: { $0.id == student.id })
+    }
+
+    private func teamForStudent(_ student: Student) -> TeamType? {
+        if propTeam.contains(where: { $0.id == student.id }) { return .prop }
+        if oppTeam.contains(where: { $0.id == student.id }) { return .opp }
+        if ogTeam.contains(where: { $0.id == student.id }) { return .og }
+        if ooTeam.contains(where: { $0.id == student.id }) { return .oo }
+        if cgTeam.contains(where: { $0.id == student.id }) { return .cg }
+        if coTeam.contains(where: { $0.id == student.id }) { return .co }
+        return nil
     }
 
     func reorderTeam(_ team: TeamType, from sourceIndex: Int, to destinationIndex: Int) {
@@ -872,7 +937,12 @@ final class SetupViewModel {
         }
     }
 
-    enum TeamType {
-        case prop, opp, og, oo, cg, co
+    enum TeamType: String, CaseIterable, Hashable {
+        case prop
+        case opp
+        case og
+        case oo
+        case cg
+        case co
     }
 }

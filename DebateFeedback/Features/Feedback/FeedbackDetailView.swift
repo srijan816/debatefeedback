@@ -323,7 +323,7 @@ struct FeedbackDetailView: View {
                         AnalyticsService.shared.logFeedbackSharedSafari(speakerPosition: recording.speakerPosition)
                     }
                 } label: {
-                    Label("Open in Google Docs", systemImage: "arrow.up.right.square")
+                    Label("Open Feedback", systemImage: "arrow.up.right.square")
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -501,7 +501,7 @@ struct FeedbackDetailView: View {
             isLoading = false
         } catch {
             print("❌ loadFeedback FAILED: \(error.localizedDescription)")
-            errorMessage = "Feedback is ready in Google Docs. Tap the menu to open it."
+            errorMessage = "Feedback is ready in the web viewer. Tap the menu to open it."
             isLoading = false
         }
     }

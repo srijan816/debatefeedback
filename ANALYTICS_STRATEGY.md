@@ -234,7 +234,7 @@ This document outlines a comprehensive analytics strategy for the DebateFeedback
 - `audio_playback_started` - Audio plays from timestamp
 - `audio_playback_stopped` - Audio stops
 - `audio_playback_completed` - Audio plays to end
-- `feedback_document_opened` - Google Docs view loaded
+- `feedback_viewer_opened` - Feedback web viewer loaded
 - `feedback_shared_safari` - Open in Safari
 - `feedback_shared_system` - Share sheet used
 
@@ -249,8 +249,8 @@ This document outlines a comprehensive analytics strategy for the DebateFeedback
 - `audio_listened_duration` (seconds)
 - `audio_total_duration` (seconds)
 - `listening_completion_percentage`
-- `document_load_time` (seconds)
-- `document_load_success` (boolean)
+- `viewer_load_time` (seconds)
+- `viewer_load_success` (boolean)
 - `time_spent_on_feedback` (seconds)
 - `num_playable_moments_clicked`
 

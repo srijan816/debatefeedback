@@ -465,8 +465,8 @@ final class TimerViewModel {
             recording.feedbackStatus = .failed
         }
 
-        if let docUrl = statusResponse.googleDocUrl, !docUrl.isEmpty {
-            recording.feedbackUrl = docUrl
+        if let feedbackUrl = statusResponse.feedbackUrl, !feedbackUrl.isEmpty {
+            recording.feedbackUrl = feedbackUrl
         }
 
         if let transcriptUrl = statusResponse.transcriptUrl, !transcriptUrl.isEmpty {

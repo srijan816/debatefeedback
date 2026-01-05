@@ -13,6 +13,7 @@ struct DebateSetupView: View {
 
     @State private var viewModel = SetupViewModel()
     @FocusState private var isStudentNameFieldFocused: Bool
+    @State private var assignmentContext: AssignmentContext?
 
     var body: some View {
         NavigationStack {
@@ -93,6 +94,21 @@ struct DebateSetupView: View {
             icon: "checkmark.circle.fill",
             type: viewModel.toastType
         )
+        .sheet(item: $assignmentContext) { context in
+            AssignmentSheet(
+                context: context,
+                unassignedStudents: viewModel.unassignedStudents(),
+                availableTeams: availableTeams,
+                teamTitle: teamTitle,
+                maxSlots: { team in
+                    viewModel.maxSlots(for: team)
+                },
+                teamStudents: teamStudents(for:),
+                onAssign: { student, team, position in
+                    viewModel.assignToTeam(student, team: team, position: position)
+                }
+            )
+        }
         .task {
             await viewModel.loadScheduleIfNeeded(for: coordinator.currentTeacher)
         }
@@ -625,41 +641,7 @@ struct DebateSetupView: View {
             .padding()
             .glassmorphism(borderColor: Constants.Colors.softCyan)
 
-            // MARK: - Unassigned Students
-            if viewModel.students.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "person.3")
-                        .font(.system(size: 48))
-                        .foregroundStyle(Constants.Gradients.primaryButton)
-                    Text("No Students Yet")
-                        .font(.headline)
-                        .foregroundColor(Constants.Colors.textPrimary)
-                    Text("Add students above to assign them to teams")
-                        .font(.subheadline)
-                        .foregroundColor(Constants.Colors.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 160)
-                .padding()
-                .glassmorphism(borderColor: Constants.Colors.softCyan)
-            } else if !viewModel.unassignedStudents().isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Drag students to teams:")
-                        .font(.headline)
-                        .foregroundColor(Constants.Colors.textPrimary)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(viewModel.unassignedStudents(), id: \.id) { student in
-                                StudentChip(student: student, onRemove: {
-                                    viewModel.removeStudent(student)
-                                })
-                            }
-                        }
-                    }
-                }
-                .padding(.bottom)
-            }
+            unassignedStudentsPanel
 
             // MARK: - Teams based on format
             switch viewModel.selectedFormat {
@@ -673,145 +655,284 @@ struct DebateSetupView: View {
         }
     }
 
+    private var unassignedStudentsPanel: some View {
+        let unassigned = viewModel.unassignedStudents()
+        let total = viewModel.students.count
+        let assignedCount = max(0, total - unassigned.count)
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Text("Students")
+                    .font(.headline)
+                    .foregroundColor(Constants.Colors.textPrimary)
+
+                Text("\(unassigned.count) unassigned")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Constants.Colors.backgroundSecondary)
+                    .cornerRadius(10)
+
+                Spacer()
+
+                Text("\(assignedCount)/\(total) assigned")
+                    .font(.caption)
+                    .foregroundColor(Constants.Colors.textSecondary)
+            }
+
+            if viewModel.students.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.3")
+                        .font(.system(size: 36))
+                        .foregroundStyle(Constants.Gradients.primaryButton)
+                    Text("Add students above to assign them to teams.")
+                        .font(.subheadline)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+            } else if unassigned.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Constants.Colors.complete)
+                    Text("All students assigned.")
+                        .font(.subheadline)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(unassigned, id: \.id) { student in
+                        UnassignedStudentRow(
+                            student: student,
+                            onAssign: {
+                                presentAssignmentSheet(student: student, team: nil, position: nil)
+                            },
+                            onRemove: {
+                                viewModel.removeStudent(student)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        .padding()
+        .glassmorphism(borderColor: Constants.Colors.softCyan)
+    }
+
+    private var availableTeams: [SetupViewModel.TeamType] {
+        switch viewModel.selectedFormat.teamStructure {
+        case .propOpp:
+            return [.prop, .opp]
+        case .britishParliamentary:
+            return [.og, .oo, .cg, .co]
+        case .asianParliamentary:
+            return [.prop, .opp]
+        }
+    }
+
+    private func teamTitle(_ team: SetupViewModel.TeamType) -> String {
+        switch team {
+        case .prop:
+            return viewModel.selectedFormat == .ap ? "Government" : "Proposition"
+        case .opp:
+            return "Opposition"
+        case .og:
+            return "OG"
+        case .oo:
+            return "OO"
+        case .cg:
+            return "CG"
+        case .co:
+            return "CO"
+        }
+    }
+
+    private func teamGradient(_ team: SetupViewModel.TeamType) -> LinearGradient {
+        switch team {
+        case .prop, .og:
+            return Constants.Gradients.propTeam
+        case .opp, .oo:
+            return Constants.Gradients.oppTeam
+        case .cg:
+            return LinearGradient(
+                colors: [Constants.Colors.cgTeam],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .co:
+            return LinearGradient(
+                colors: [Constants.Colors.coTeam],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private func teamBorderColor(_ team: SetupViewModel.TeamType) -> Color {
+        switch team {
+        case .prop, .og:
+            return Constants.Colors.softCyan
+        case .opp, .oo:
+            return Constants.Colors.softPink
+        case .cg:
+            return Constants.Colors.softMint
+        case .co:
+            return Constants.Colors.softPurple
+        }
+    }
+
+    private func teamStudents(for team: SetupViewModel.TeamType) -> [Student] {
+        switch team {
+        case .prop:
+            return viewModel.propTeam
+        case .opp:
+            return viewModel.oppTeam
+        case .og:
+            return viewModel.ogTeam
+        case .oo:
+            return viewModel.ooTeam
+        case .cg:
+            return viewModel.cgTeam
+        case .co:
+            return viewModel.coTeam
+        }
+    }
+
+    private func presentAssignmentSheet(
+        student: Student?,
+        team: SetupViewModel.TeamType?,
+        position: Int?
+    ) {
+        assignmentContext = AssignmentContext(
+            student: student,
+            team: team,
+            position: position,
+            allowsStudentSelection: student == nil
+        )
+    }
+
     private var twoTeamLayout: some View {
         HStack(spacing: 16) {
-            TeamDropZone(
-                title: "Proposition",
+            TeamSlotBox(
+                title: teamTitle(.prop),
+                gradient: teamGradient(.prop),
+                borderColor: teamBorderColor(.prop),
                 students: viewModel.propTeam,
-                allStudents: viewModel.students,
-                color: Constants.Colors.propTeam,
-                onDrop: { student in
-                    viewModel.assignToTeam(student, team: .prop)
+                maxSlots: viewModel.maxSlots(for: .prop),
+                onSlotTap: { position, student in
+                    presentAssignmentSheet(student: student, team: .prop, position: position)
                 },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
-                },
-                onReorder: { from, to in
-                    viewModel.reorderTeam(.prop, from: from, to: to)
                 }
             )
 
-            TeamDropZone(
-                title: "Opposition",
+            TeamSlotBox(
+                title: teamTitle(.opp),
+                gradient: teamGradient(.opp),
+                borderColor: teamBorderColor(.opp),
                 students: viewModel.oppTeam,
-                allStudents: viewModel.students,
-                color: Constants.Colors.oppTeam,
-                onDrop: { student in
-                    viewModel.assignToTeam(student, team: .opp)
+                maxSlots: viewModel.maxSlots(for: .opp),
+                onSlotTap: { position, student in
+                    presentAssignmentSheet(student: student, team: .opp, position: position)
                 },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
-                },
-                onReorder: { from, to in
-                    viewModel.reorderTeam(.opp, from: from, to: to)
                 }
             )
         }
     }
 
     private var britishParliamentaryLayout: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 16) {
-                TeamDropZone(
-                    title: "OG",
-                    students: viewModel.ogTeam,
-                    allStudents: viewModel.students,
-                    color: Constants.Colors.ogTeam,
-                    onDrop: { student in
-                        viewModel.assignToTeam(student, team: .og)
-                    },
-                    onRemove: { student in
-                        viewModel.removeFromAllTeams(student)
-                    },
-                    onReorder: { from, to in
-                        viewModel.reorderTeam(.og, from: from, to: to)
-                    }
-                )
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+            TeamSlotBox(
+                title: teamTitle(.og),
+                gradient: teamGradient(.og),
+                borderColor: teamBorderColor(.og),
+                students: viewModel.ogTeam,
+                maxSlots: viewModel.maxSlots(for: .og),
+                onSlotTap: { position, student in
+                    presentAssignmentSheet(student: student, team: .og, position: position)
+                },
+                onRemove: { student in
+                    viewModel.removeFromAllTeams(student)
+                }
+            )
 
-                TeamDropZone(
-                    title: "OO",
-                    students: viewModel.ooTeam,
-                    allStudents: viewModel.students,
-                    color: Constants.Colors.ooTeam,
-                    onDrop: { student in
-                        viewModel.assignToTeam(student, team: .oo)
-                    },
-                    onRemove: { student in
-                        viewModel.removeFromAllTeams(student)
-                    },
-                    onReorder: { from, to in
-                        viewModel.reorderTeam(.oo, from: from, to: to)
-                    }
-                )
-            }
+            TeamSlotBox(
+                title: teamTitle(.oo),
+                gradient: teamGradient(.oo),
+                borderColor: teamBorderColor(.oo),
+                students: viewModel.ooTeam,
+                maxSlots: viewModel.maxSlots(for: .oo),
+                onSlotTap: { position, student in
+                    presentAssignmentSheet(student: student, team: .oo, position: position)
+                },
+                onRemove: { student in
+                    viewModel.removeFromAllTeams(student)
+                }
+            )
 
-            HStack(spacing: 16) {
-                TeamDropZone(
-                    title: "CG",
-                    students: viewModel.cgTeam,
-                    allStudents: viewModel.students,
-                    color: Constants.Colors.cgTeam,
-                    onDrop: { student in
-                        viewModel.assignToTeam(student, team: .cg)
-                    },
-                    onRemove: { student in
-                        viewModel.removeFromAllTeams(student)
-                    },
-                    onReorder: { from, to in
-                        viewModel.reorderTeam(.cg, from: from, to: to)
-                    }
-                )
+            TeamSlotBox(
+                title: teamTitle(.cg),
+                gradient: teamGradient(.cg),
+                borderColor: teamBorderColor(.cg),
+                students: viewModel.cgTeam,
+                maxSlots: viewModel.maxSlots(for: .cg),
+                onSlotTap: { position, student in
+                    presentAssignmentSheet(student: student, team: .cg, position: position)
+                },
+                onRemove: { student in
+                    viewModel.removeFromAllTeams(student)
+                }
+            )
 
-                TeamDropZone(
-                    title: "CO",
-                    students: viewModel.coTeam,
-                    allStudents: viewModel.students,
-                    color: Constants.Colors.coTeam,
-                    onDrop: { student in
-                        viewModel.assignToTeam(student, team: .co)
-                    },
-                    onRemove: { student in
-                        viewModel.removeFromAllTeams(student)
-                    },
-                    onReorder: { from, to in
-                        viewModel.reorderTeam(.co, from: from, to: to)
-                    }
-                )
-            }
+            TeamSlotBox(
+                title: teamTitle(.co),
+                gradient: teamGradient(.co),
+                borderColor: teamBorderColor(.co),
+                students: viewModel.coTeam,
+                maxSlots: viewModel.maxSlots(for: .co),
+                onSlotTap: { position, student in
+                    presentAssignmentSheet(student: student, team: .co, position: position)
+                },
+                onRemove: { student in
+                    viewModel.removeFromAllTeams(student)
+                }
+            )
         }
     }
 
     private var asianParliamentaryLayout: some View {
         HStack(spacing: 16) {
-            TeamDropZone(
-                title: "Government",
+            TeamSlotBox(
+                title: teamTitle(.prop),
+                gradient: teamGradient(.prop),
+                borderColor: teamBorderColor(.prop),
                 students: viewModel.propTeam,
-                allStudents: viewModel.students,
-                color: Constants.Colors.propTeam,
-                onDrop: { student in
-                    viewModel.assignToTeam(student, team: .prop)
+                maxSlots: viewModel.maxSlots(for: .prop),
+                onSlotTap: { position, student in
+                    presentAssignmentSheet(student: student, team: .prop, position: position)
                 },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
-                },
-                onReorder: { from, to in
-                    viewModel.reorderTeam(.prop, from: from, to: to)
                 }
             )
 
-            TeamDropZone(
-                title: "Opposition",
+            TeamSlotBox(
+                title: teamTitle(.opp),
+                gradient: teamGradient(.opp),
+                borderColor: teamBorderColor(.opp),
                 students: viewModel.oppTeam,
-                allStudents: viewModel.students,
-                color: Constants.Colors.oppTeam,
-                onDrop: { student in
-                    viewModel.assignToTeam(student, team: .opp)
+                maxSlots: viewModel.maxSlots(for: .opp),
+                onSlotTap: { position, student in
+                    presentAssignmentSheet(student: student, team: .opp, position: position)
                 },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
-                },
-                onReorder: { from, to in
-                    viewModel.reorderTeam(.opp, from: from, to: to)
                 }
             )
         }
@@ -909,87 +1030,61 @@ struct DebateSetupView: View {
 
 // MARK: - Supporting Views
 
-struct StudentChip: View {
+struct UnassignedStudentRow: View {
     let student: Student
+    let onAssign: () -> Void
     let onRemove: () -> Void
-    @State private var isDragging = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(student.name)
-                .font(.title3)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
+        HStack(spacing: 12) {
+            Button(action: onAssign) {
+                HStack(spacing: 10) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(Constants.Gradients.primaryButton)
+                    Text(student.name)
+                        .font(.headline)
+                        .foregroundColor(Constants.Colors.textPrimary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
 
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.callout)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(Constants.Colors.softPink)
             }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Remove \(student.name)")
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(Constants.Gradients.secondaryButton)
-        .cornerRadius(24)
-        .shadow(
-            color: isDragging ? Constants.Colors.softPink.opacity(0.6) : Constants.Colors.softPink.opacity(0.3),
-            radius: isDragging ? 12 : 8,
-            x: 0,
-            y: isDragging ? 8 : 4
-        )
-        .scaleEffect(isDragging ? 1.05 : 1.0)
-        .opacity(isDragging ? 0.8 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
-        .onLongPressGesture(minimumDuration: 0.05, pressing: { pressing in
-            withAnimation(.easeInOut(duration: 0.1)) {
-                isDragging = pressing
-            }
-        }) { } // Action handled by drag
-        .draggable(student.id.uuidString)
-        .accessibilityLabel("Student: \(student.name)")
-        .accessibilityHint("Drag to assign to a team")
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(Constants.Colors.backgroundSecondary)
+        .cornerRadius(12)
+        .accessibilityHint("Tap to assign \(student.name)")
     }
 }
 
-struct TeamDropZone: View {
+struct TeamSlotBox: View {
     let title: String
+    let gradient: LinearGradient
+    let borderColor: Color
     let students: [Student]
-    let allStudents: [Student]
-    let color: Color
-    let onDrop: (Student) -> Void
+    let maxSlots: Int
+    let onSlotTap: (Int, Student?) -> Void
     let onRemove: (Student) -> Void
-    let onReorder: (Int, Int) -> Void
-
-    @State private var isTargeted = false
-    @State private var draggedStudent: Student?
-
-    private var gradient: LinearGradient {
-        if title.contains("Prop") || title.contains("Government") || title == "OG" || title == "CG" {
-            return Constants.Gradients.propTeam
-        } else {
-            return Constants.Gradients.oppTeam
-        }
-    }
-
-    private var borderColor: Color {
-        if title.contains("Prop") || title.contains("Government") || title == "OG" || title == "CG" {
-            return Constants.Colors.softCyan
-        } else {
-            return Constants.Colors.softPink
-        }
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             headerView
-            contentView
+            slotsView
         }
+        .padding()
+        .background(backgroundView)
     }
 
-    // MARK: - Header
-
     private var headerView: some View {
-        HStack {
+        HStack(spacing: 8) {
             Image(systemName: "person.2.fill")
                 .foregroundStyle(gradient)
             Text(title)
@@ -999,163 +1094,234 @@ struct TeamDropZone: View {
         }
     }
 
-    // MARK: - Content
-
-    private var contentView: some View {
+    private var slotsView: some View {
         VStack(spacing: 8) {
-            studentsList
-            emptyState
-        }
-        .frame(maxWidth: .infinity, minHeight: 300)
-        .padding()
-        .background(backgroundView)
-        .scaleEffect(isTargeted ? 1.02 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTargeted)
-        .dropDestination(for: String.self) { items, _ in
-            handleDrop(items: items)
-        } isTargeted: { targeted in
-            withAnimation {
-                isTargeted = targeted
+            ForEach(0..<maxSlots, id: \.self) { index in
+                let position = index + 1
+                if index < students.count {
+                    filledSlotRow(position: position, student: students[index])
+                } else {
+                    emptySlotRow(position: position)
+                }
             }
         }
-        .accessibilityLabel("\(title) team drop zone")
-        .accessibilityHint("Drop students here to assign them to \(title)")
+        .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Students List
-
-    private var studentsList: some View {
-        ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
-            studentRow(index: index, student: student)
-        }
-    }
-
-    private func studentRow(index: Int, student: Student) -> some View {
-        HStack(spacing: 12) {
-            // Drag handle indicator
-            Image(systemName: "line.3.horizontal")
+    private func filledSlotRow(position: Int, student: Student) -> some View {
+        HStack(spacing: 10) {
+            Text("\(position).")
                 .font(.caption)
-                .foregroundColor(Constants.Colors.textTertiary)
-            
-            Text("\(index + 1).")
-                .font(.headline)
                 .foregroundColor(Constants.Colors.textSecondary)
-                .frame(width: 28)
+                .frame(width: 18, alignment: .leading)
             Text(student.name)
-                .font(.title3)
+                .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundColor(Constants.Colors.textPrimary)
             Spacer()
-            removeButton(for: student)
-        }
-        .padding(.vertical, 16) // Increased for easier touch
-        .padding(.horizontal, 12)
-        .frame(minHeight: 56) // Minimum touch target
-        .background(studentRowBackground(for: student))
-        .contentShape(Rectangle()) // Make entire row tappable/draggable
-        .opacity(draggedStudent?.id == student.id ? 0.6 : 1.0)
-        .draggable(student.id.uuidString) {
-            dragPreview(for: student)
-        }
-        .dropDestination(for: String.self) { items, _ in
-            handleReorder(items: items, toIndex: index, targetStudent: student)
-        }
-        .transition(.scale.combined(with: .opacity))
-    }
-
-    private func removeButton(for student: Student) -> some View {
-        Button {
-            HapticManager.shared.light()
-            onRemove(student)
-        } label: {
-            Image(systemName: "xmark.circle.fill")
-                .font(.body)
-                .foregroundColor(Constants.Colors.softPink)
-        }
-        .accessibilityLabel("Remove \(student.name)")
-        .accessibilityHint("Remove student from this team")
-    }
-
-    private func studentRowBackground(for student: Student) -> some View {
-        RoundedRectangle(cornerRadius: 10)
-            .fill(draggedStudent?.id == student.id ? Constants.Colors.backgroundSecondary : Color.clear)
-    }
-
-    private func dragPreview(for student: Student) -> some View {
-        Text(student.name)
-            .font(.headline)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(gradient)
-            .foregroundColor(.white)
-            .cornerRadius(20)
-    }
-
-    // MARK: - Empty State
-
-    @ViewBuilder
-    private var emptyState: some View {
-        if students.isEmpty {
-            VStack(spacing: 8) {
-                Image(systemName: isTargeted ? "arrow.down.circle.fill" : "arrow.down.circle.dotted")
-                    .font(.system(size: 32))
-                    .foregroundStyle(gradient)
-                    .symbolEffect(.bounce, value: isTargeted)
-                Text(isTargeted ? "Drop here" : "Drop to add")
-                    .font(.headline)
-                    .fontWeight(isTargeted ? .semibold : .medium)
-                    .foregroundColor(isTargeted ? Constants.Colors.textPrimary : Constants.Colors.textSecondary)
+            Button {
+                onRemove(student)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(Constants.Colors.softPink)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 40)
+            .buttonStyle(.borderless)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(Constants.Colors.backgroundSecondary)
+        .cornerRadius(12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSlotTap(position, student)
         }
     }
 
-    // MARK: - Background
+    private func emptySlotRow(position: Int) -> some View {
+        let isActive = position == students.count + 1
+        HStack(spacing: 10) {
+            Text("\(position).")
+                .font(.caption)
+                .foregroundColor(Constants.Colors.textSecondary)
+                .frame(width: 18, alignment: .leading)
+            Text(isActive ? "Tap to assign" : "Fill above first")
+                .font(.subheadline)
+                .foregroundColor(Constants.Colors.textSecondary)
+            Spacer()
+            Image(systemName: "plus.circle")
+                .foregroundStyle(gradient)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(borderColor.opacity(0.35), style: StrokeStyle(lineWidth: 1.2, dash: [5]))
+        )
+        .contentShape(Rectangle())
+        .opacity(isActive ? 1.0 : 0.45)
+        .onTapGesture {
+            if isActive {
+                onSlotTap(position, nil)
+            }
+        }
+    }
 
     private var backgroundView: some View {
         RoundedRectangle(cornerRadius: 20)
             .fill(Constants.Colors.cardBackground)
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
-                    .stroke(
-                        isTargeted ? borderColor : borderColor.opacity(0.4),
-                        lineWidth: isTargeted ? 3 : 1.5
-                    )
-                    .animation(.easeInOut(duration: 0.2), value: isTargeted)
+                    .stroke(borderColor.opacity(0.4), lineWidth: 1.5)
             )
-            .shadow(
-                color: isTargeted ? borderColor.opacity(0.3) : Color.black.opacity(0.08),
-                radius: isTargeted ? 16 : 12,
-                x: 0,
-                y: 4
-            )
+            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
+    }
+}
+
+struct AssignmentContext: Identifiable {
+    let id = UUID()
+    let student: Student?
+    let team: SetupViewModel.TeamType?
+    let position: Int?
+    let allowsStudentSelection: Bool
+}
+
+struct AssignmentSheet: View {
+    let context: AssignmentContext
+    let unassignedStudents: [Student]
+    let availableTeams: [SetupViewModel.TeamType]
+    let teamTitle: (SetupViewModel.TeamType) -> String
+    let maxSlots: (SetupViewModel.TeamType) -> Int
+    let teamStudents: (SetupViewModel.TeamType) -> [Student]
+    let onAssign: (Student, SetupViewModel.TeamType, Int) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedTeam: SetupViewModel.TeamType
+    @State private var selectedPosition: Int
+    @State private var selectedStudentId: UUID?
+
+    init(
+        context: AssignmentContext,
+        unassignedStudents: [Student],
+        availableTeams: [SetupViewModel.TeamType],
+        teamTitle: @escaping (SetupViewModel.TeamType) -> String,
+        maxSlots: @escaping (SetupViewModel.TeamType) -> Int,
+        teamStudents: @escaping (SetupViewModel.TeamType) -> [Student],
+        onAssign: @escaping (Student, SetupViewModel.TeamType, Int) -> Void
+    ) {
+        self.context = context
+        self.unassignedStudents = unassignedStudents
+        self.availableTeams = availableTeams
+        self.teamTitle = teamTitle
+        self.maxSlots = maxSlots
+        self.teamStudents = teamStudents
+        self.onAssign = onAssign
+
+        let defaultTeam = context.team ?? availableTeams.first ?? .prop
+        _selectedTeam = State(initialValue: defaultTeam)
+        _selectedPosition = State(initialValue: context.position ?? 1)
+        _selectedStudentId = State(initialValue: context.student?.id ?? unassignedStudents.first?.id)
     }
 
-    // MARK: - Handlers
+    private var studentOptions: [Student] {
+        guard context.allowsStudentSelection else {
+            return context.student.map { [$0] } ?? []
+        }
 
-    private func handleDrop(items: [String]) -> Bool {
-        guard let studentIdString = items.first,
-              let studentId = UUID(uuidString: studentIdString),
-              let student = allStudents.first(where: { $0.id == studentId })
-        else { return false }
-
-        HapticManager.shared.medium()
-        onDrop(student)
-        return true
+        var options = unassignedStudents
+        if let student = context.student, !options.contains(where: { $0.id == student.id }) {
+            options.insert(student, at: 0)
+        }
+        return options
     }
 
-    private func handleReorder(items: [String], toIndex: Int, targetStudent: Student) -> Bool {
-        guard let studentIdString = items.first,
-              let droppedStudentId = UUID(uuidString: studentIdString),
-              students.contains(where: { $0.id == droppedStudentId }),
-              let fromIndex = students.firstIndex(where: { $0.id == droppedStudentId }),
-              droppedStudentId != targetStudent.id
-        else { return false }
+    private var selectedStudent: Student? {
+        if let student = context.student, !context.allowsStudentSelection {
+            return student
+        }
+        if let selectedId = selectedStudentId {
+            return studentOptions.first(where: { $0.id == selectedId })
+        }
+        return nil
+    }
 
-        HapticManager.shared.light()
-        onReorder(fromIndex, toIndex)
-        return true
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Student") {
+                    if context.allowsStudentSelection {
+                        if studentOptions.isEmpty {
+                            Text("No unassigned students available.")
+                                .foregroundColor(Constants.Colors.textSecondary)
+                        } else {
+                            Picker("Student", selection: $selectedStudentId) {
+                                ForEach(studentOptions, id: \.id) { student in
+                                    Text(student.name).tag(Optional(student.id))
+                                }
+                            }
+                        }
+                    } else {
+                        Text(context.student?.name ?? "Select student")
+                            .font(.headline)
+                    }
+                }
+
+                Section("Team") {
+                    Picker("Team", selection: $selectedTeam) {
+                        ForEach(availableTeams, id: \.self) { team in
+                            Text(teamTitle(team)).tag(team)
+                        }
+                    }
+                    .pickerStyle(availableTeams.count <= 2 ? .segmented : .menu)
+                }
+
+                Section("Position") {
+                    Picker("Position", selection: $selectedPosition) {
+                        let assignments = teamStudents(selectedTeam)
+                        let isAlreadyInTeam = selectedStudent.map { student in
+                            assignments.contains(where: { $0.id == student.id })
+                        } ?? false
+                        let maxPosition = isAlreadyInTeam
+                            ? maxSlots(selectedTeam)
+                            : min(maxSlots(selectedTeam), assignments.count + 1)
+                        ForEach(1...maxPosition, id: \.self) { position in
+                            let occupant = position <= assignments.count ? assignments[position - 1].name : nil
+                            Text(occupant == nil ? "Position \(position)" : "Position \(position) · \(occupant)")
+                                .tag(position)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                }
+            }
+            .navigationTitle("Assign Student")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Assign") {
+                        guard let student = selectedStudent else { return }
+                        onAssign(student, selectedTeam, selectedPosition)
+                        dismiss()
+                    }
+                    .disabled(selectedStudent == nil)
+                }
+            }
+            .onChange(of: selectedTeam) { newValue in
+                let assignments = teamStudents(newValue)
+                let isAlreadyInTeam = selectedStudent.map { student in
+                    assignments.contains(where: { $0.id == student.id })
+                } ?? false
+                let maxPosition = isAlreadyInTeam
+                    ? maxSlots(newValue)
+                    : min(maxSlots(newValue), assignments.count + 1)
+                if selectedPosition > maxPosition {
+                    selectedPosition = maxPosition
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 

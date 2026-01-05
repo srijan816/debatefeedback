@@ -384,7 +384,7 @@ actor APIClient {
         case .getSpeechStatus:
             let response = SpeechStatusResponse(
                 status: "complete",
-                googleDocUrl: "https://docs.google.com/document/d/mock_doc_id",
+                feedbackUrl: "https://api.genalphai.com/feedback/view/mock_speech",
                 errorMessage: nil,
                 transcriptionStatus: "completed",
                 transcriptionError: nil,
@@ -692,7 +692,7 @@ struct UploadResponse: Codable {
 
 struct SpeechStatusResponse: Codable {
     let status: String
-    let googleDocUrl: String?
+    let feedbackUrl: String?
     let errorMessage: String?
     let transcriptionStatus: String?
     let transcriptionError: String?
@@ -704,7 +704,6 @@ struct SpeechStatusResponse: Codable {
 
 struct FeedbackContentResponse: Codable {
     let speechId: String
-    let googleDocUrl: String?
     let scores: [String: Double]?
     let qualitativeFeedback: QualitativeFeedback?
     let playableMoments: [PlayableMoment]?
@@ -722,7 +721,6 @@ struct FeedbackContentResponse: Codable {
     // Note: No explicit CodingKeys needed - decoder uses .convertFromSnakeCase
     // which automatically converts:
     //   speech_id -> speechId
-    //   google_doc_url -> googleDocUrl
     //   qualitative_feedback -> qualitativeFeedback
     //   feedback_text -> feedbackText
     //   playable_moments -> playableMoments
