@@ -469,7 +469,7 @@ final class TimerViewModel {
             recording.feedbackUrl = docUrl
         }
 
-        if let transcriptUrl = statusResponse.transcriptUrl ?? statusResponse.transcriptDownloadUrl, !transcriptUrl.isEmpty {
+        if let transcriptUrl = statusResponse.transcriptUrl, !transcriptUrl.isEmpty {
             recording.transcriptUrl = transcriptUrl
         }
 

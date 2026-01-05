@@ -833,7 +833,7 @@ final class SetupViewModel {
             body: request
         )
 
-        return response.id
+        return response.debateId
     }
 
     // MARK: - Helper Methods

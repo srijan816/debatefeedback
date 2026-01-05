@@ -10,7 +10,7 @@ enum Endpoint {
     case login
     case getCurrentSchedule(teacherId: String, timestamp: String, classId: String? = nil)
     case createDebate
-    case uploadSpeech(debateId: String)
+    case uploadSpeech
     case getSpeechStatus(speechId: String)
     case getFeedbackContent(speechId: String)
     case getDebateHistory(teacherId: String, limit: Int)
@@ -27,10 +27,10 @@ enum Endpoint {
             return path
         case .createDebate:
             return "/debates/create"
-        case .uploadSpeech(let debateId):
-            return "/debates/\(debateId)/speeches"
+        case .uploadSpeech:
+            return "/speeches"
         case .getSpeechStatus(let speechId):
-            return "/speeches/\(speechId)/status"
+            return "/speeches/\(speechId)"
         case .getFeedbackContent(let speechId):
             return "/speeches/\(speechId)/feedback"
         case .getDebateHistory(let teacherId, let limit):

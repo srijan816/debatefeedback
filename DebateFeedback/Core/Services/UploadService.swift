@@ -52,6 +52,7 @@ final class UploadService: NSObject {
         // 1. Prepare metadata
         let resolvedDuration = await ensureDuration(for: recording, fileURL: fileURL)
         let metadata: [String: Any] = [
+            "debate_id": debateId,
             "speaker_name": recording.speakerName,
             "speaker_position": recording.speakerPosition,
             "duration_seconds": resolvedDuration,
@@ -76,7 +77,7 @@ final class UploadService: NSObject {
         // 4. Perform Upload
         do {
             let speechId = try await performUpload(
-                endpoint: .uploadSpeech(debateId: debateId),
+                endpoint: .uploadSpeech,
                 fileURL: fileURL,
                 metadata: metadata,
                 uploadId: uploadId,
