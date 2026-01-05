@@ -71,6 +71,28 @@ struct HistoryListView: View {
         }
         .subtleBoundaryEffects(showTopEdge: true, showBottomEdge: true, intensity: 0.06)
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
+        .onAppear {
+            // Track history viewed
+            AnalyticsService.shared.logHistoryViewed(totalDebates: allSessions.count)
+        }
+        .onChange(of: searchText) { oldValue, newValue in
+            // Track search performed (only when non-empty)
+            if !newValue.isEmpty && newValue != oldValue {
+                AnalyticsService.shared.logHistorySearchPerformed(query: newValue, resultsCount: filteredSessions.count)
+            }
+        }
+        .onChange(of: selectedFormat) { _, _ in
+            // Track filter applied
+            if selectedFormat != nil || selectedLevel != nil {
+                AnalyticsService.shared.logHistoryFilterApplied(format: selectedFormat, studentLevel: selectedLevel)
+            }
+        }
+        .onChange(of: selectedLevel) { _, _ in
+            // Track filter applied
+            if selectedFormat != nil || selectedLevel != nil {
+                AnalyticsService.shared.logHistoryFilterApplied(format: selectedFormat, studentLevel: selectedLevel)
+            }
+        }
     }
 
     // MARK: - History List
@@ -99,6 +121,8 @@ struct HistoryListView: View {
                         Button("Clear Filters") {
                             HapticManager.shared.light()
                             clearFilters()
+                            // Track filter cleared
+                            AnalyticsService.shared.logHistoryFilterCleared()
                         }
                         .font(.caption)
                         .foregroundColor(Constants.Colors.primaryBlue)
@@ -116,6 +140,14 @@ struct HistoryListView: View {
                             HistoryCard(session: session)
                         }
                         .accessibilityLabel("Debate session: \(session.motion)")
+                        .simultaneousGesture(TapGesture().onEnded {
+                            // Track debate selected
+                            AnalyticsService.shared.logHistoryDebateSelected(
+                                debateId: session.id.uuidString,
+                                format: session.format,
+                                studentLevel: session.studentLevel
+                            )
+                        })
                     }
                     .onDelete(perform: deleteSessions)
                 }
@@ -260,6 +292,8 @@ struct HistoryListView: View {
                     Button("Clear All Filters") {
                         HapticManager.shared.light()
                         clearFilters()
+                        // Track filter cleared
+                        AnalyticsService.shared.logHistoryFilterCleared()
                     }
                     .foregroundColor(Constants.Colors.primaryBlue)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -314,6 +348,15 @@ struct HistoryListView: View {
         guard let session = sessionToDelete else { return }
 
         HapticManager.shared.medium()
+
+        // Calculate debate age in days
+        let debateAgeDays = Calendar.current.dateComponents([.day], from: session.createdAt, to: Date()).day ?? 0
+
+        // Track debate deleted
+        AnalyticsService.shared.logHistoryDebateDeleted(
+            debateId: session.id.uuidString,
+            debateAgeDays: debateAgeDays
+        )
 
         // Delete all related recordings and students
         if let recordings = session.speechRecordings {

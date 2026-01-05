@@ -51,6 +51,7 @@ final class SetupViewModel {
     var selectedClassDayTime: String? // Formatted day/time for current class
     var availableClasses: [ScheduleResponse.ClassInfo] = []
     var availableAlternatives: [ScheduleAlternative] = []
+    var hasScheduleDefaults = false
 
     struct ClassPickerOption: Identifiable, Hashable {
         let id: String
@@ -107,15 +108,28 @@ final class SetupViewModel {
     @ObservationIgnored private var cachedTeacher: Teacher?
     @ObservationIgnored private var cachedTimestamp: String?
     @ObservationIgnored private var scheduleCache: [String: ScheduleResponse] = [:]
+    @ObservationIgnored private var setupStartTime: Date?
+    @ObservationIgnored private var step1StartTime: Date?
 
     enum SetupStep {
         case basicInfo
-        case students
         case teamAssignment
     }
 
     init() {
         updateTimeDefaults()
+    }
+
+    // MARK: - Analytics
+
+    func trackSetupStarted() {
+        setupStartTime = Date()
+        step1StartTime = Date()
+        AnalyticsService.shared.logSetupStarted()
+    }
+
+    func trackSetupAbandoned() {
+        AnalyticsService.shared.logSetupAbandoned(currentStep: currentStep == .basicInfo ? 1 : 2)
     }
 
     // MARK: - Prefill
@@ -242,6 +256,7 @@ final class SetupViewModel {
         applySuggestedMotion(classInfo.suggestedMotion, fallback: fallbackMotion)
 
         scheduleNotice = nil
+        hasScheduleDefaults = true
     }
 
     private func updateRoster(with responses: [StudentResponse]) {
@@ -300,6 +315,7 @@ final class SetupViewModel {
         switch error {
         case .notFound:
             scheduleNotice = "No schedule found for this time. You can enter details manually."
+            hasScheduleDefaults = false
         default:
             errorMessage = error.localizedDescription
             showError = true
@@ -312,11 +328,21 @@ final class SetupViewModel {
         switch currentStep {
         case .basicInfo:
             if validateBasicInfo() {
-                currentStep = .students
-            }
-        case .students:
-            if validateStudents() {
+                // Track step 1 completion
+                let step1Time = step1StartTime.map { Date().timeIntervalSince($0) } ?? 0
+                AnalyticsService.shared.logSetupStep1Completed(
+                    format: selectedFormat,
+                    studentLevel: studentLevel,
+                    motionLength: motion.count,
+                    speechTime: speechTimeSeconds,
+                    replyTime: replyTimeSeconds,
+                    usedSchedule: selectedClassId != nil
+                )
+
                 currentStep = .teamAssignment
+
+                // Track step 2 started
+                AnalyticsService.shared.logSetupStep2Started()
             }
         case .teamAssignment:
             break
@@ -327,10 +353,8 @@ final class SetupViewModel {
         switch currentStep {
         case .basicInfo:
             break
-        case .students:
-            currentStep = .basicInfo
         case .teamAssignment:
-            currentStep = .students
+            currentStep = .basicInfo
         }
     }
 
@@ -346,6 +370,9 @@ final class SetupViewModel {
         let student = Student(name: newStudentName, level: studentLevel)
         students.append(student)
         newStudentName = ""
+
+        // Track student added
+        AnalyticsService.shared.logSetupStudentAdded(studentCount: students.count)
 
         // Show success toast
         showSuccessToast("Student added")
@@ -390,20 +417,30 @@ final class SetupViewModel {
         removeFromAllTeams(student)
 
         // Add to specified team
+        var position = 0
         switch team {
         case .prop:
             propTeam.append(student)
+            position = propTeam.count
         case .opp:
             oppTeam.append(student)
+            position = oppTeam.count
         case .og:
             ogTeam.append(student)
+            position = ogTeam.count
         case .oo:
             ooTeam.append(student)
+            position = ooTeam.count
         case .cg:
             cgTeam.append(student)
+            position = cgTeam.count
         case .co:
             coTeam.append(student)
+            position = coTeam.count
         }
+
+        // Track student assigned
+        AnalyticsService.shared.logSetupStudentAssigned(team: team.rawValue, position: position)
     }
 
     func removeFromAllTeams(_ student: Student) {
@@ -413,6 +450,42 @@ final class SetupViewModel {
         ooTeam.removeAll { $0.id == student.id }
         cgTeam.removeAll { $0.id == student.id }
         coTeam.removeAll { $0.id == student.id }
+    }
+
+    func reorderTeam(_ team: TeamType, from sourceIndex: Int, to destinationIndex: Int) {
+        switch team {
+        case .prop:
+            guard sourceIndex < propTeam.count, destinationIndex < propTeam.count else { return }
+            let student = propTeam.remove(at: sourceIndex)
+            propTeam.insert(student, at: destinationIndex)
+        case .opp:
+            guard sourceIndex < oppTeam.count, destinationIndex < oppTeam.count else { return }
+            let student = oppTeam.remove(at: sourceIndex)
+            oppTeam.insert(student, at: destinationIndex)
+        case .og:
+            guard sourceIndex < ogTeam.count, destinationIndex < ogTeam.count else { return }
+            let student = ogTeam.remove(at: sourceIndex)
+            ogTeam.insert(student, at: destinationIndex)
+        case .oo:
+            guard sourceIndex < ooTeam.count, destinationIndex < ooTeam.count else { return }
+            let student = ooTeam.remove(at: sourceIndex)
+            ooTeam.insert(student, at: destinationIndex)
+        case .cg:
+            guard sourceIndex < cgTeam.count, destinationIndex < cgTeam.count else { return }
+            let student = cgTeam.remove(at: sourceIndex)
+            cgTeam.insert(student, at: destinationIndex)
+        case .co:
+            guard sourceIndex < coTeam.count, destinationIndex < coTeam.count else { return }
+            let student = coTeam.remove(at: sourceIndex)
+            coTeam.insert(student, at: destinationIndex)
+        }
+
+        // Track student reordered
+        AnalyticsService.shared.logSetupStudentReordered(
+            team: team.rawValue,
+            fromPosition: sourceIndex + 1,
+            toPosition: destinationIndex + 1
+        )
     }
 
     func unassignedStudents() -> [Student] {
@@ -559,6 +632,14 @@ final class SetupViewModel {
         guard validateTeamAssignment() else {
             return nil
         }
+
+        // Track setup completed
+        let totalSetupTime = setupStartTime.map { Date().timeIntervalSince($0) } ?? 0
+        AnalyticsService.shared.logSetupCompleted(
+            format: selectedFormat,
+            numStudents: students.count,
+            totalSetupTime: totalSetupTime
+        )
 
         let session = DebateSession(
             motion: motion,

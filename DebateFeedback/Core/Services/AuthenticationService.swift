@@ -22,59 +22,101 @@ final class AuthenticationService {
     // MARK: - Authentication Methods
 
     func loginAsTeacher(name: String) async throws -> Teacher {
+        // Track login initiated
+        AnalyticsService.shared.logLoginInitiated()
+
         guard let deviceId = UserDefaults.standard.string(forKey: Constants.UserDefaultsKeys.deviceId) else {
+            // Track login failed
+            AnalyticsService.shared.logError(
+                type: "auth_error",
+                message: "No device ID",
+                screen: "AuthView",
+                action: "login"
+            )
             throw NetworkError.unknown(NSError(domain: "No device ID", code: -1))
         }
 
-        // In mock mode, create a fake teacher
-        if Constants.API.useMockData {
+        do {
+            // In mock mode, create a fake teacher
+            if Constants.API.useMockData {
+                let teacher = Teacher(
+                    name: name,
+                    deviceId: deviceId,
+                    authToken: "mock_token_\(UUID().uuidString)",
+                    isAdmin: false
+                )
+
+                // Store auth token
+                await apiClient.setAuthToken(teacher.authToken)
+                UserDefaults.standard.set(teacher.authToken, forKey: Constants.UserDefaultsKeys.authToken)
+                UserDefaults.standard.set(teacher.id.uuidString, forKey: Constants.UserDefaultsKeys.currentTeacherId)
+
+                self.currentTeacher = teacher
+                self.isAuthenticated = true
+
+                // Track successful login
+                AnalyticsService.shared.logLoginSuccess(
+                    teacherName: name,
+                    deviceId: deviceId,
+                    isReturning: false // Mock mode always false
+                )
+
+                return teacher
+            }
+
+            // Real API call
+            let response: LoginResponse = try await apiClient.request(
+                endpoint: .login,
+                body: LoginRequest(teacherId: name, deviceId: deviceId)
+            )
+
             let teacher = Teacher(
-                name: name,
+                id: UUID(uuidString: response.teacher.id) ?? UUID(),
+                name: response.teacher.name,
                 deviceId: deviceId,
-                authToken: "mock_token_\(UUID().uuidString)",
-                isAdmin: false
+                authToken: response.token,
+                isAdmin: response.teacher.isAdmin
             )
 
             // Store auth token
-            await apiClient.setAuthToken(teacher.authToken)
-            UserDefaults.standard.set(teacher.authToken, forKey: Constants.UserDefaultsKeys.authToken)
+            await apiClient.setAuthToken(response.token)
+            UserDefaults.standard.set(response.token, forKey: Constants.UserDefaultsKeys.authToken)
             UserDefaults.standard.set(teacher.id.uuidString, forKey: Constants.UserDefaultsKeys.currentTeacherId)
 
             self.currentTeacher = teacher
             self.isAuthenticated = true
 
+            // Track successful login (returning user since API found them)
+            AnalyticsService.shared.logLoginSuccess(
+                teacherName: name,
+                deviceId: deviceId,
+                isReturning: true
+            )
+
             return teacher
+        } catch {
+            // Track login failed
+            AnalyticsService.shared.logError(
+                type: "auth_error",
+                message: error.localizedDescription,
+                screen: "AuthView",
+                action: "login"
+            )
+            throw error
         }
-
-        // Real API call
-        let response: LoginResponse = try await apiClient.request(
-            endpoint: .login,
-            body: LoginRequest(teacherId: name, deviceId: deviceId)
-        )
-
-        let teacher = Teacher(
-            id: UUID(uuidString: response.teacher.id) ?? UUID(),
-            name: response.teacher.name,
-            deviceId: deviceId,
-            authToken: response.token,
-            isAdmin: response.teacher.isAdmin
-        )
-
-        // Store auth token
-        await apiClient.setAuthToken(response.token)
-        UserDefaults.standard.set(response.token, forKey: Constants.UserDefaultsKeys.authToken)
-        UserDefaults.standard.set(teacher.id.uuidString, forKey: Constants.UserDefaultsKeys.currentTeacherId)
-
-        self.currentTeacher = teacher
-        self.isAuthenticated = true
-
-        return teacher
     }
 
     func loginAsGuest() {
+        guard let deviceId = UserDefaults.standard.string(forKey: Constants.UserDefaultsKeys.deviceId) else {
+            return
+        }
+
         UserDefaults.standard.set(true, forKey: Constants.UserDefaultsKeys.isGuestMode)
         self.isAuthenticated = true
         self.currentTeacher = nil
+
+        // Track guest mode selected
+        AnalyticsService.shared.logGuestModeSelected(deviceId: deviceId)
     }
 
     func logout() {
@@ -88,6 +130,9 @@ final class AuthenticationService {
 
         self.currentTeacher = nil
         self.isAuthenticated = false
+
+        // Track logout
+        AnalyticsService.shared.logLogout()
     }
 
     // MARK: - Private Methods

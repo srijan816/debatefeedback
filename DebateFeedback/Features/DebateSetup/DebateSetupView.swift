@@ -12,6 +12,7 @@ struct DebateSetupView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var viewModel = SetupViewModel()
+    @FocusState private var isStudentNameFieldFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -33,14 +34,16 @@ struct DebateSetupView: View {
                             switch viewModel.currentStep {
                             case .basicInfo:
                                 basicInfoStep
-                            case .students:
-                                studentsStep
                             case .teamAssignment:
                                 teamAssignmentStep
                             }
                         }
                         .padding(.horizontal, 28)
                         .padding(.vertical, 16)
+                    }
+                    .onTapGesture {
+                        // Dismiss keyboard when tapping outside text field
+                        isStudentNameFieldFocused = false
                     }
 
                     // Navigation buttons
@@ -51,6 +54,22 @@ struct DebateSetupView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Constants.Colors.backgroundLight, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .onAppear {
+                // Track setup started (first time)
+                viewModel.trackSetupStarted()
+
+                // If returning from a debate (coordinator has an active session),
+                // restore the state and go to team assignment step
+                if let session = coordinator.currentDebateSession {
+                    restoreStateFromSession(session)
+                }
+            }
+            .onDisappear {
+                // Track abandonment if user leaves without completing
+                if viewModel.currentStep != .teamAssignment || coordinator.currentDebateSession == nil {
+                    viewModel.trackSetupAbandoned()
+                }
+            }
             // Removed .toolbarColorScheme(.light) to allow dark mode adaptation
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -79,11 +98,47 @@ struct DebateSetupView: View {
         }
     }
 
+    // MARK: - State Restoration
+
+    private func restoreStateFromSession(_ session: DebateSession) {
+        // Restore basic info
+        viewModel.motion = session.motion
+        viewModel.selectedFormat = session.format
+        viewModel.studentLevel = session.studentLevel
+        viewModel.speechTimeSeconds = session.speechTimeSeconds
+
+        // Restore students
+        if let students = session.students {
+            viewModel.students = students
+        }
+
+        // Restore team assignments from composition
+        if let composition = session.teamComposition, let students = session.students {
+            // Helper to find students by ID
+            func findStudents(ids: [String]?) -> [Student] {
+                guard let ids = ids else { return [] }
+                return ids.compactMap { idString in
+                    students.first { $0.id.uuidString == idString }
+                }
+            }
+
+            viewModel.propTeam = findStudents(ids: composition.prop)
+            viewModel.oppTeam = findStudents(ids: composition.opp)
+            viewModel.ogTeam = findStudents(ids: composition.og)
+            viewModel.ooTeam = findStudents(ids: composition.oo)
+            viewModel.cgTeam = findStudents(ids: composition.cg)
+            viewModel.coTeam = findStudents(ids: composition.co)
+        }
+
+        // Go to team assignment step
+        viewModel.currentStep = .teamAssignment
+    }
+
     // MARK: - Progress Bar
 
     private var progressBar: some View {
         HStack(spacing: 4) {
-            ForEach([SetupViewModel.SetupStep.basicInfo, .students, .teamAssignment], id: \.self) { step in
+            ForEach([SetupViewModel.SetupStep.basicInfo, .teamAssignment], id: \.self) { step in
                 Rectangle()
                     .fill(stepIndex(step) <= stepIndex(viewModel.currentStep) ?
                           Constants.Gradients.primaryButton : LinearGradient(colors: [Constants.Colors.textTertiary.opacity(0.2)], startPoint: .leading, endPoint: .trailing))
@@ -98,8 +153,7 @@ struct DebateSetupView: View {
     private func stepIndex(_ step: SetupViewModel.SetupStep) -> Int {
         switch step {
         case .basicInfo: return 0
-        case .students: return 1
-        case .teamAssignment: return 2
+        case .teamAssignment: return 1
         }
     }
 
@@ -111,6 +165,10 @@ struct DebateSetupView: View {
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundColor(Constants.Colors.textPrimary)
+
+            if viewModel.hasScheduleDefaults {
+                scheduleDefaultsBadge
+            }
 
             if let notice = viewModel.scheduleNotice {
                 scheduleNoticeView(notice)
@@ -474,25 +532,46 @@ struct DebateSetupView: View {
         )
     }
 
-    // MARK: - Students Step
+    private var scheduleDefaultsBadge: some View {
+        let detail = viewModel.selectedClassDayTime ?? viewModel.selectedClassId ?? "Schedule"
+        return HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.caption)
+            Text("Auto-filled from \(detail)")
+                .font(.caption)
+                .fontWeight(.semibold)
+        }
+        .foregroundColor(Constants.Colors.textSecondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Constants.Colors.backgroundSecondary)
+        .cornerRadius(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-    private var studentsStep: some View {
+    // MARK: - Team Assignment Step
+
+    private var teamAssignmentStep: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Add Students")
+            Text("Add Students & Assign Teams")
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundColor(Constants.Colors.textPrimary)
 
-            VStack(alignment: .leading, spacing: 8) {
+            // MARK: - Add Student Section (Prominent)
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
                     TextField("Enter student name", text: $viewModel.newStudentName)
                         .textContentType(.name)
                         .autocapitalization(.words)
+                        .focused($isStudentNameFieldFocused)
                         .onSubmit {
                             if viewModel.isStudentNameValid {
                                 viewModel.addStudent()
+                                isStudentNameFieldFocused = false // Dismiss keyboard
                             }
                         }
+                        .submitLabel(.done)
                         .padding()
                         .background(Constants.Colors.backgroundSecondary)
                         .foregroundColor(Constants.Colors.textPrimary)
@@ -506,15 +585,24 @@ struct DebateSetupView: View {
                                     lineWidth: 1.5
                                 )
                         )
+                        .toolbar {
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Spacer()
+                                Button("Done") {
+                                    isStudentNameFieldFocused = false
+                                }
+                            }
+                        }
                         .accessibilityLabel("Student name text field")
                         .accessibilityHint("Enter a student name between 2 and 50 characters")
 
                     Button(action: {
                         HapticManager.shared.medium()
                         viewModel.addStudent()
+                        isStudentNameFieldFocused = false // Dismiss keyboard after adding
                     }) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 32))
+                            .font(.system(size: 36))
                             .foregroundStyle(Constants.Gradients.primaryButton)
                     }
                     .disabled(!viewModel.isStudentNameValid)
@@ -534,153 +622,38 @@ struct DebateSetupView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
+            .padding()
+            .glassmorphism(borderColor: Constants.Colors.softCyan)
 
-            if viewModel.isLoadingSchedule {
-                VStack(spacing: 16) {
-                    ProgressView()
-                    Text("Loading roster...")
-                        .font(.subheadline)
-                        .foregroundColor(Constants.Colors.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .softCard(backgroundColor: Constants.Colors.cardBackground, borderColor: Constants.Colors.textTertiary.opacity(0.2), cornerRadius: 16)
-
-            } else if viewModel.students.isEmpty {
+            // MARK: - Unassigned Students
+            if viewModel.students.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "person.3")
                         .font(.system(size: 48))
                         .foregroundStyle(Constants.Gradients.primaryButton)
-                    Text("No Students Added")
+                    Text("No Students Yet")
                         .font(.headline)
                         .foregroundColor(Constants.Colors.textPrimary)
-                    Text("Add students using the field above")
+                    Text("Add students above to assign them to teams")
                         .font(.subheadline)
                         .foregroundColor(Constants.Colors.textSecondary)
-                    if let notice = viewModel.scheduleNotice {
-                        Text(notice)
-                            .font(.caption)
-                            .foregroundColor(Constants.Colors.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 200)
+                .frame(height: 160)
                 .padding()
                 .glassmorphism(borderColor: Constants.Colors.softCyan)
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("\(viewModel.students.count) Students Added")
-                        .font(.headline)
-                        .foregroundColor(Constants.Colors.textSecondary)
-
-                    ForEach(viewModel.students, id: \.id) { student in
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(Constants.Gradients.primaryButton)
-                                .frame(width: 36, height: 36)
-                                .overlay(
-                                    Text(String(student.name.prefix(1)))
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                )
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(student.name)
-                                    .foregroundColor(Constants.Colors.textPrimary)
-                                    .fontWeight(.medium)
-
-                                if let teamName = viewModel.getTeamName(for: student) {
-                                    HStack(spacing: 4) {
-                                        Circle()
-                                            .fill(Constants.Colors.softPink)
-                                            .frame(width: 6, height: 6)
-                                        Text(teamName)
-                                            .font(.caption2)
-                                            .foregroundColor(Constants.Colors.textSecondary)
-                                    }
-                                }
-                            }
-
-                            Spacer()
-
-                            // Toggle-style team buttons
-                            HStack(spacing: 8) {
-                                Button {
-                                    viewModel.assignToTeam(student, team: .prop)
-                                } label: {
-                                    Text("Prop")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            viewModel.propTeam.contains(where: { $0.id == student.id }) ?
-                                            Constants.Gradients.propTeam :
-                                            LinearGradient(colors: [Constants.Colors.backgroundSecondary], startPoint: .leading, endPoint: .trailing)
-                                        )
-                                        .foregroundColor(viewModel.propTeam.contains(where: { $0.id == student.id }) ? .white : Constants.Colors.textPrimary)
-                                        .cornerRadius(12)
-                                }
-
-                                Button {
-                                    viewModel.assignToTeam(student, team: .opp)
-                                } label: {
-                                    Text("Opp")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            viewModel.oppTeam.contains(where: { $0.id == student.id }) ?
-                                            Constants.Gradients.oppTeam :
-                                            LinearGradient(colors: [Constants.Colors.backgroundSecondary], startPoint: .leading, endPoint: .trailing)
-                                        )
-                                        .foregroundColor(viewModel.oppTeam.contains(where: { $0.id == student.id }) ? .white : Constants.Colors.textPrimary)
-                                        .cornerRadius(12)
-                                }
-
-                                Button {
-                                    viewModel.removeStudent(student)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(Constants.Colors.softPink)
-                                        .font(.title3)
-                                }
-                            }
-                        }
-                        .padding()
-                        .background(Constants.Colors.backgroundSecondary)
-                        .cornerRadius(16)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Constants.Colors.softCyan.opacity(0.2), lineWidth: 1)
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Team Assignment Step
-
-    private var teamAssignmentStep: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Assign Teams")
-                .font(.title2)
-                .fontWeight(.bold)
-
-            // Unassigned students
-            if !viewModel.unassignedStudents().isEmpty {
+            } else if !viewModel.unassignedStudents().isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Drag students to teams:")
                         .font(.headline)
+                        .foregroundColor(Constants.Colors.textPrimary)
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
                             ForEach(viewModel.unassignedStudents(), id: \.id) { student in
-                                StudentChip(student: student)
+                                StudentChip(student: student, onRemove: {
+                                    viewModel.removeStudent(student)
+                                })
                             }
                         }
                     }
@@ -688,7 +661,7 @@ struct DebateSetupView: View {
                 .padding(.bottom)
             }
 
-            // Teams based on format
+            // MARK: - Teams based on format
             switch viewModel.selectedFormat {
             case .wsdc, .australs:
                 twoTeamLayout
@@ -712,6 +685,9 @@ struct DebateSetupView: View {
                 },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onReorder: { from, to in
+                    viewModel.reorderTeam(.prop, from: from, to: to)
                 }
             )
 
@@ -725,6 +701,9 @@ struct DebateSetupView: View {
                 },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onReorder: { from, to in
+                    viewModel.reorderTeam(.opp, from: from, to: to)
                 }
             )
         }
@@ -743,6 +722,9 @@ struct DebateSetupView: View {
                     },
                     onRemove: { student in
                         viewModel.removeFromAllTeams(student)
+                    },
+                    onReorder: { from, to in
+                        viewModel.reorderTeam(.og, from: from, to: to)
                     }
                 )
 
@@ -756,6 +738,9 @@ struct DebateSetupView: View {
                     },
                     onRemove: { student in
                         viewModel.removeFromAllTeams(student)
+                    },
+                    onReorder: { from, to in
+                        viewModel.reorderTeam(.oo, from: from, to: to)
                     }
                 )
             }
@@ -771,6 +756,9 @@ struct DebateSetupView: View {
                     },
                     onRemove: { student in
                         viewModel.removeFromAllTeams(student)
+                    },
+                    onReorder: { from, to in
+                        viewModel.reorderTeam(.cg, from: from, to: to)
                     }
                 )
 
@@ -784,6 +772,9 @@ struct DebateSetupView: View {
                     },
                     onRemove: { student in
                         viewModel.removeFromAllTeams(student)
+                    },
+                    onReorder: { from, to in
+                        viewModel.reorderTeam(.co, from: from, to: to)
                     }
                 )
             }
@@ -802,6 +793,9 @@ struct DebateSetupView: View {
                 },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onReorder: { from, to in
+                    viewModel.reorderTeam(.prop, from: from, to: to)
                 }
             )
 
@@ -815,6 +809,9 @@ struct DebateSetupView: View {
                 },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onReorder: { from, to in
+                    viewModel.reorderTeam(.opp, from: from, to: to)
                 }
             )
         }
@@ -914,34 +911,43 @@ struct DebateSetupView: View {
 
 struct StudentChip: View {
     let student: Student
+    let onRemove: () -> Void
     @State private var isDragging = false
 
     var body: some View {
-        Text(student.name)
-            .font(.body) // Increased font size
-            .fontWeight(.medium)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(Constants.Gradients.secondaryButton)
-            .foregroundColor(.white)
-            .cornerRadius(24)
-            .shadow(
-                color: isDragging ? Constants.Colors.softPink.opacity(0.6) : Constants.Colors.softPink.opacity(0.3),
-                radius: isDragging ? 12 : 8,
-                x: 0,
-                y: isDragging ? 8 : 4
-            )
-            .scaleEffect(isDragging ? 1.05 : 1.0)
-            .opacity(isDragging ? 0.8 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
-            .onLongPressGesture(minimumDuration: 0.05, pressing: { pressing in
-                withAnimation(.easeInOut(duration: 0.1)) {
-                    isDragging = pressing
-                }
-            }) { } // Action handled by drag
-            .draggable(student.id.uuidString)
-            .accessibilityLabel("Student chip: \(student.name)")
-            .accessibilityHint("Drag to assign to a team")
+        HStack(spacing: 8) {
+            Text(student.name)
+                .font(.title3)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.callout)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(Constants.Gradients.secondaryButton)
+        .cornerRadius(24)
+        .shadow(
+            color: isDragging ? Constants.Colors.softPink.opacity(0.6) : Constants.Colors.softPink.opacity(0.3),
+            radius: isDragging ? 12 : 8,
+            x: 0,
+            y: isDragging ? 8 : 4
+        )
+        .scaleEffect(isDragging ? 1.05 : 1.0)
+        .opacity(isDragging ? 0.8 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
+        .onLongPressGesture(minimumDuration: 0.05, pressing: { pressing in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isDragging = pressing
+            }
+        }) { } // Action handled by drag
+        .draggable(student.id.uuidString)
+        .accessibilityLabel("Student: \(student.name)")
+        .accessibilityHint("Drag to assign to a team")
     }
 }
 
@@ -952,8 +958,10 @@ struct TeamDropZone: View {
     let color: Color
     let onDrop: (Student) -> Void
     let onRemove: (Student) -> Void
+    let onReorder: (Int, Int) -> Void
 
     @State private var isTargeted = false
+    @State private var draggedStudent: Student?
 
     private var gradient: LinearGradient {
         if title.contains("Prop") || title.contains("Government") || title == "OG" || title == "CG" {
@@ -973,102 +981,181 @@ struct TeamDropZone: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "person.2.fill")
-                    .foregroundStyle(gradient)
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundColor(Constants.Colors.textPrimary)
-            }
-
-            VStack(spacing: 8) {
-                ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
-                    HStack {
-                        Text("\(index + 1).")
-                            .font(.body) // Increased font
-                            .foregroundColor(Constants.Colors.textSecondary)
-                            .frame(width: 24)
-                        Text(student.name)
-                            .font(.body) // Increased font
-                            .fontWeight(.medium)
-                            .foregroundColor(Constants.Colors.textPrimary)
-                        Spacer()
-                        Button {
-                            HapticManager.shared.light()
-                            onRemove(student)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.body)
-                                .foregroundColor(Constants.Colors.softPink)
-                        }
-                        .accessibilityLabel("Remove \(student.name)")
-                        .accessibilityHint("Remove student from this team")
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 4)
-                    // Removed background and border as requested ("dont keep that border just keep the text")
-                    .transition(.scale.combined(with: .opacity))
-                }
-
-                if students.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: isTargeted ? "arrow.down.circle.fill" : "arrow.down.circle.dotted")
-                            .font(.system(size: 32)) // Increased size
-                            .foregroundStyle(gradient)
-                            .symbolEffect(.bounce, value: isTargeted)
-                        Text(isTargeted ? "Drop here" : "Drop to add")
-                            .font(.body) // Increased font
-                            .fontWeight(isTargeted ? .semibold : .regular)
-                            .foregroundColor(isTargeted ? Constants.Colors.textPrimary : Constants.Colors.textSecondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 300) // Increased minHeight to 300 ("taller on the bottom")
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Constants.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(
-                                isTargeted ? borderColor : borderColor.opacity(0.4),
-                                lineWidth: isTargeted ? 3 : 1.5
-                            )
-                            .animation(.easeInOut(duration: 0.2), value: isTargeted)
-                    )
-                    .shadow(
-                        color: isTargeted ? borderColor.opacity(0.3) : Color.black.opacity(0.08),
-                        radius: isTargeted ? 16 : 12,
-                        x: 0,
-                        y: 4
-                    )
-            )
-            .scaleEffect(isTargeted ? 1.02 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTargeted)
-            .dropDestination(for: String.self) { items, location in
-                guard let studentIdString = items.first,
-                      let studentId = UUID(uuidString: studentIdString),
-                      let student = allStudents.first(where: { $0.id == studentId })
-                else { return false }
-
-                // Haptic feedback on successful drop
-                HapticManager.shared.medium()
-
-                // Call the drop handler
-                onDrop(student)
-
-                return true
-            } isTargeted: { targeted in
-                withAnimation {
-                    isTargeted = targeted
-                }
-            }
-            .accessibilityLabel("\(title) team drop zone")
-            .accessibilityHint("Drop students here to assign them to \(title)")
+            headerView
+            contentView
         }
+    }
+
+    // MARK: - Header
+
+    private var headerView: some View {
+        HStack {
+            Image(systemName: "person.2.fill")
+                .foregroundStyle(gradient)
+            Text(title)
+                .font(.headline)
+                .fontWeight(.bold)
+                .foregroundColor(Constants.Colors.textPrimary)
+        }
+    }
+
+    // MARK: - Content
+
+    private var contentView: some View {
+        VStack(spacing: 8) {
+            studentsList
+            emptyState
+        }
+        .frame(maxWidth: .infinity, minHeight: 300)
+        .padding()
+        .background(backgroundView)
+        .scaleEffect(isTargeted ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isTargeted)
+        .dropDestination(for: String.self) { items, _ in
+            handleDrop(items: items)
+        } isTargeted: { targeted in
+            withAnimation {
+                isTargeted = targeted
+            }
+        }
+        .accessibilityLabel("\(title) team drop zone")
+        .accessibilityHint("Drop students here to assign them to \(title)")
+    }
+
+    // MARK: - Students List
+
+    private var studentsList: some View {
+        ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
+            studentRow(index: index, student: student)
+        }
+    }
+
+    private func studentRow(index: Int, student: Student) -> some View {
+        HStack(spacing: 12) {
+            // Drag handle indicator
+            Image(systemName: "line.3.horizontal")
+                .font(.caption)
+                .foregroundColor(Constants.Colors.textTertiary)
+            
+            Text("\(index + 1).")
+                .font(.headline)
+                .foregroundColor(Constants.Colors.textSecondary)
+                .frame(width: 28)
+            Text(student.name)
+                .font(.title3)
+                .fontWeight(.semibold)
+                .foregroundColor(Constants.Colors.textPrimary)
+            Spacer()
+            removeButton(for: student)
+        }
+        .padding(.vertical, 16) // Increased for easier touch
+        .padding(.horizontal, 12)
+        .frame(minHeight: 56) // Minimum touch target
+        .background(studentRowBackground(for: student))
+        .contentShape(Rectangle()) // Make entire row tappable/draggable
+        .opacity(draggedStudent?.id == student.id ? 0.6 : 1.0)
+        .draggable(student.id.uuidString) {
+            dragPreview(for: student)
+        }
+        .dropDestination(for: String.self) { items, _ in
+            handleReorder(items: items, toIndex: index, targetStudent: student)
+        }
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    private func removeButton(for student: Student) -> some View {
+        Button {
+            HapticManager.shared.light()
+            onRemove(student)
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.body)
+                .foregroundColor(Constants.Colors.softPink)
+        }
+        .accessibilityLabel("Remove \(student.name)")
+        .accessibilityHint("Remove student from this team")
+    }
+
+    private func studentRowBackground(for student: Student) -> some View {
+        RoundedRectangle(cornerRadius: 10)
+            .fill(draggedStudent?.id == student.id ? Constants.Colors.backgroundSecondary : Color.clear)
+    }
+
+    private func dragPreview(for student: Student) -> some View {
+        Text(student.name)
+            .font(.headline)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(gradient)
+            .foregroundColor(.white)
+            .cornerRadius(20)
+    }
+
+    // MARK: - Empty State
+
+    @ViewBuilder
+    private var emptyState: some View {
+        if students.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: isTargeted ? "arrow.down.circle.fill" : "arrow.down.circle.dotted")
+                    .font(.system(size: 32))
+                    .foregroundStyle(gradient)
+                    .symbolEffect(.bounce, value: isTargeted)
+                Text(isTargeted ? "Drop here" : "Drop to add")
+                    .font(.headline)
+                    .fontWeight(isTargeted ? .semibold : .medium)
+                    .foregroundColor(isTargeted ? Constants.Colors.textPrimary : Constants.Colors.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+        }
+    }
+
+    // MARK: - Background
+
+    private var backgroundView: some View {
+        RoundedRectangle(cornerRadius: 20)
+            .fill(Constants.Colors.cardBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(
+                        isTargeted ? borderColor : borderColor.opacity(0.4),
+                        lineWidth: isTargeted ? 3 : 1.5
+                    )
+                    .animation(.easeInOut(duration: 0.2), value: isTargeted)
+            )
+            .shadow(
+                color: isTargeted ? borderColor.opacity(0.3) : Color.black.opacity(0.08),
+                radius: isTargeted ? 16 : 12,
+                x: 0,
+                y: 4
+            )
+    }
+
+    // MARK: - Handlers
+
+    private func handleDrop(items: [String]) -> Bool {
+        guard let studentIdString = items.first,
+              let studentId = UUID(uuidString: studentIdString),
+              let student = allStudents.first(where: { $0.id == studentId })
+        else { return false }
+
+        HapticManager.shared.medium()
+        onDrop(student)
+        return true
+    }
+
+    private func handleReorder(items: [String], toIndex: Int, targetStudent: Student) -> Bool {
+        guard let studentIdString = items.first,
+              let droppedStudentId = UUID(uuidString: studentIdString),
+              students.contains(where: { $0.id == droppedStudentId }),
+              let fromIndex = students.firstIndex(where: { $0.id == droppedStudentId }),
+              droppedStudentId != targetStudent.id
+        else { return false }
+
+        HapticManager.shared.light()
+        onReorder(fromIndex, toIndex)
+        return true
     }
 }
 

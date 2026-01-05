@@ -39,7 +39,7 @@ struct FeedbackDetailView: View {
                                 .font(.subheadline)
                                 .fontWeight(displayMode == mode ? .semibold : .medium)
                                 .foregroundColor(displayMode == mode ? Constants.Colors.primaryAction : .secondary)
-                            
+
                             Rectangle()
                                 .fill(displayMode == mode ? Constants.Colors.primaryAction : Color.clear)
                                 .frame(height: 2)
@@ -49,6 +49,8 @@ struct FeedbackDetailView: View {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                 displayMode = mode
                             }
+                            // Track tab switch
+                            AnalyticsService.shared.logFeedbackTabSwitched(to: mode.rawValue)
                         }
                     }
                 }
@@ -74,6 +76,8 @@ struct FeedbackDetailView: View {
                         Button {
                             if let url = URL(string: urlString) {
                                 UIApplication.shared.open(url)
+                                // Track opening feedback in Safari
+                                AnalyticsService.shared.logFeedbackSharedSafari(speakerPosition: recording.speakerPosition)
                             }
                         } label: {
                             Label("Open in Safari", systemImage: "safari")
@@ -81,6 +85,8 @@ struct FeedbackDetailView: View {
 
                         Button {
                             showingShareSheet = true
+                            // Track share sheet opened
+                            AnalyticsService.shared.logFeedbackSharedSystem(speakerPosition: recording.speakerPosition)
                         } label: {
                             Label("Share", systemImage: "square.and.arrow.up")
                         }
@@ -97,6 +103,15 @@ struct FeedbackDetailView: View {
         }
         .task {
             await loadFeedback()
+        }
+        .onAppear {
+            // Track feedback detail viewed
+            let playableMoments = sections.flatMap { $0.moments }
+            AnalyticsService.shared.logFeedbackDetailViewed(
+                speakerPosition: recording.speakerPosition,
+                hasPlayableMoments: !playableMoments.isEmpty,
+                playableMomentsCount: playableMoments.count
+            )
         }
         .onChange(of: playbackService.isPlaying) { _, isPlaying in
             if !isPlaying {
@@ -184,6 +199,8 @@ struct FeedbackDetailView: View {
 
             Button {
                 UIApplication.shared.open(url)
+                // Track opening feedback in Safari
+                AnalyticsService.shared.logFeedbackSharedSafari(speakerPosition: recording.speakerPosition)
             } label: {
                 Label("Open in Safari", systemImage: "safari")
             }
@@ -302,6 +319,8 @@ struct FeedbackDetailView: View {
                 Button {
                     if let url = URL(string: urlString) {
                         UIApplication.shared.open(url)
+                        // Track opening feedback in Safari
+                        AnalyticsService.shared.logFeedbackSharedSafari(speakerPosition: recording.speakerPosition)
                     }
                 } label: {
                     Label("Open in Google Docs", systemImage: "arrow.up.right.square")
@@ -354,6 +373,8 @@ struct FeedbackDetailView: View {
             } else if let transcriptURL = transcriptURL {
                 Button {
                     UIApplication.shared.open(transcriptURL)
+                    // Track transcript viewed
+                    AnalyticsService.shared.logTranscriptViewed(speakerPosition: recording.speakerPosition)
                 } label: {
                     Label("Open Transcript", systemImage: "doc.text.magnifyingglass")
                         .font(.subheadline)
@@ -571,6 +592,17 @@ struct FeedbackDetailView: View {
 
 
     private func playMoment(_ moment: PlayableMoment) {
+        // Track playable moment clicked (KEY METRIC!)
+        let allMoments = sections.flatMap { $0.moments }
+        if let momentIndex = allMoments.firstIndex(where: { $0.id == moment.id }) {
+            AnalyticsService.shared.logPlayableMomentClicked(
+                speakerPosition: recording.speakerPosition,
+                timestamp: moment.timestampLabel,
+                index: momentIndex,
+                totalMoments: allMoments.count
+            )
+        }
+
         // DIAGNOSTIC LOGGING - Phase 1
         print("========== PLAY MOMENT DIAGNOSTICS ==========")
         print("🎯 Requested moment: \(moment.timestampLabel) @ \(moment.timestampSeconds)s")

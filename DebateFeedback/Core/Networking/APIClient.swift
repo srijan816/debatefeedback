@@ -37,6 +37,16 @@ actor APIClient {
         }
 
         guard let url = endpoint.url() else {
+            // Track API error
+            await MainActor.run {
+                AnalyticsService.shared.logError(
+                    type: "api_error",
+                    message: "Invalid URL for endpoint: \(endpoint)",
+                    code: "invalid_url",
+                    screen: "APIClient",
+                    action: "request"
+                )
+            }
             throw NetworkError.invalidURL
         }
 
@@ -60,10 +70,30 @@ actor APIClient {
             let (data, response) = try await session.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
+                // Track API error
+                await MainActor.run {
+                    AnalyticsService.shared.logError(
+                        type: "api_error",
+                        message: "Invalid HTTP response",
+                        code: "invalid_response",
+                        screen: "APIClient",
+                        action: "request:\(endpoint)"
+                    )
+                }
                 throw NetworkError.unknown(NSError(domain: "Invalid response", code: -1))
             }
 
             guard (200...299).contains(httpResponse.statusCode) else {
+                // Track API error with status code
+                await MainActor.run {
+                    AnalyticsService.shared.logError(
+                        type: "api_error",
+                        message: "HTTP error: \(httpResponse.statusCode)",
+                        code: "\(httpResponse.statusCode)",
+                        screen: "APIClient",
+                        action: "request:\(endpoint)"
+                    )
+                }
                 if httpResponse.statusCode == 401 {
                     throw NetworkError.unauthorized
                 } else if httpResponse.statusCode == 404 {
@@ -87,12 +117,33 @@ actor APIClient {
                 }
                 print("🔥 Decoding error: \(error)")
                 print("================================================")
+
+                // Track decoding error
+                await MainActor.run {
+                    AnalyticsService.shared.logError(
+                        type: "api_error",
+                        message: "Failed to decode \(T.self): \(error.localizedDescription)",
+                        code: "decoding_error",
+                        screen: "APIClient",
+                        action: "request:\(endpoint)"
+                    )
+                }
                 throw NetworkError.decodingError
             }
 
         } catch let error as NetworkError {
             throw error
         } catch {
+            // Track unknown network error
+            await MainActor.run {
+                AnalyticsService.shared.logError(
+                    type: "network_error",
+                    message: "Network request failed: \(error.localizedDescription)",
+                    code: "unknown",
+                    screen: "APIClient",
+                    action: "request:\(endpoint)"
+                )
+            }
             throw NetworkError.unknown(error)
         }
     }
@@ -122,6 +173,16 @@ actor APIClient {
         }
 
         guard let url = endpoint.url() else {
+            // Track upload error
+            await MainActor.run {
+                AnalyticsService.shared.logError(
+                    type: "upload_error",
+                    message: "Invalid URL for upload endpoint: \(endpoint)",
+                    code: "invalid_url",
+                    screen: "APIClient",
+                    action: "upload"
+                )
+            }
             throw NetworkError.invalidURL
         }
 
@@ -145,10 +206,30 @@ actor APIClient {
             let (data, response) = try await session.upload(for: request, from: httpBody)
 
             guard let httpResponse = response as? HTTPURLResponse else {
+                // Track upload error
+                await MainActor.run {
+                    AnalyticsService.shared.logError(
+                        type: "upload_error",
+                        message: "Invalid HTTP response during upload",
+                        code: "invalid_response",
+                        screen: "APIClient",
+                        action: "upload:\(endpoint)"
+                    )
+                }
                 throw NetworkError.unknown(NSError(domain: "Invalid response", code: -1))
             }
 
             guard (200...299).contains(httpResponse.statusCode) else {
+                // Track upload error with status code
+                await MainActor.run {
+                    AnalyticsService.shared.logError(
+                        type: "upload_error",
+                        message: "Upload failed with HTTP \(httpResponse.statusCode)",
+                        code: "\(httpResponse.statusCode)",
+                        screen: "APIClient",
+                        action: "upload:\(endpoint)"
+                    )
+                }
                 throw NetworkError.serverError(statusCode: httpResponse.statusCode)
             }
 
@@ -160,6 +241,16 @@ actor APIClient {
         } catch let error as NetworkError {
             throw error
         } catch {
+            // Track upload failure
+            await MainActor.run {
+                AnalyticsService.shared.logError(
+                    type: "upload_error",
+                    message: "Upload failed: \(error.localizedDescription)",
+                    code: "upload_failed",
+                    screen: "APIClient",
+                    action: "upload:\(endpoint)"
+                )
+            }
             throw NetworkError.uploadFailed(reason: error.localizedDescription)
         }
     }

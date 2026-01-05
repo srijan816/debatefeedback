@@ -36,7 +36,19 @@ final class UploadService: NSObject {
         let uploadId = recording.id
         let debateId = debateSession.backendDebateId ?? debateSession.id.uuidString
         let fileURL = URL(fileURLWithPath: recording.localFilePath)
-        
+
+        // Calculate file size
+        let fileSize = try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? UInt64
+        let fileSizeMB = Double(fileSize ?? 0) / (1024 * 1024)
+        let uploadStartTime = Date()
+
+        // Track upload started
+        AnalyticsService.shared.logUploadStarted(
+            speechId: nil,
+            fileSizeMB: fileSizeMB,
+            networkType: "unknown" // TODO: Add network type detection
+        )
+
         // 1. Prepare metadata
         let resolvedDuration = await ensureDuration(for: recording, fileURL: fileURL)
         let metadata: [String: Any] = [
@@ -45,7 +57,7 @@ final class UploadService: NSObject {
             "duration_seconds": resolvedDuration,
             "student_level": debateSession.studentLevel.rawValue
         ]
-        
+
         // 2. Persist UploadRequest
         let context = DataController.shared.backgroundContext()
         let request = UploadRequest(
@@ -56,19 +68,39 @@ final class UploadService: NSObject {
         )
         context.insert(request)
         try? context.save()
-        
+
         // 3. Track in-memory
         let task = UploadTask(id: uploadId, fileURL: fileURL)
         activeUploads[uploadId] = task
 
         // 4. Perform Upload
-        return try await performUpload(
-            endpoint: .uploadSpeech(debateId: debateId),
-            fileURL: fileURL,
-            metadata: metadata,
-            uploadId: uploadId,
-            progressHandler: progressHandler
-        )
+        do {
+            let speechId = try await performUpload(
+                endpoint: .uploadSpeech(debateId: debateId),
+                fileURL: fileURL,
+                metadata: metadata,
+                uploadId: uploadId,
+                progressHandler: progressHandler
+            )
+
+            // Track upload completed
+            let duration = Date().timeIntervalSince(uploadStartTime)
+            AnalyticsService.shared.logUploadCompleted(
+                speechId: nil,
+                duration: duration,
+                fileSizeMB: fileSizeMB
+            )
+
+            return speechId
+        } catch {
+            // Track upload failed
+            AnalyticsService.shared.logUploadFailed(
+                speechId: nil,
+                reason: error.localizedDescription,
+                retryCount: 0
+            )
+            throw error
+        }
     }
 
     private func performUpload(
@@ -122,8 +154,18 @@ final class UploadService: NSObject {
     ) async throws -> String {
         guard attemptNumber <= Constants.API.maxRetryAttempts else {
             activeUploads.removeValue(forKey: uploadId)
+            AnalyticsService.shared.logUploadFailed(
+                speechId: nil,
+                reason: "Max retry attempts reached",
+                retryCount: attemptNumber
+            )
             throw NetworkError.uploadFailed(reason: "Max retry attempts reached")
         }
+
+        // Track retry attempt
+        AnalyticsService.shared.logEvent(AnalyticsEvents.uploadRetried, parameters: [
+            "retry_count": attemptNumber
+        ])
 
         // Exponential backoff
         let delay = TimeInterval(pow(2.0, Double(attemptNumber - 1)))

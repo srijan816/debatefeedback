@@ -31,6 +31,14 @@ struct DebateFeedbackApp: App {
             UserDefaults.standard.set(deviceId, forKey: Constants.UserDefaultsKeys.deviceId)
         }
 
+        // Configure analytics
+        if let deviceId = UserDefaults.standard.string(forKey: Constants.UserDefaultsKeys.deviceId) {
+            AnalyticsService.shared.configure(deviceId: deviceId)
+        }
+
+        // Log app opened
+        AnalyticsService.shared.logAppOpened()
+
         // Clean up old audio files
         FileManager.cleanupOldRecordings()
     }

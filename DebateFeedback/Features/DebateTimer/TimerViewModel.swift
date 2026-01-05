@@ -42,6 +42,9 @@ final class TimerViewModel {
     @ObservationIgnored private var has60sWarningFired = false
     @ObservationIgnored private var has30sWarningFired = false
     @ObservationIgnored private var has15sWarningFired = false
+    @ObservationIgnored private var sessionStartTime: Date?
+    @ObservationIgnored private var recordingStartTime: Date?
+    @ObservationIgnored private var hasLoggedSessionStart = false
 
     init(debateSession: DebateSession, modelContext: ModelContext) {
         self.debateSession = debateSession
@@ -158,16 +161,19 @@ final class TimerViewModel {
             if !has60sWarningFired {
                 HapticManager.shared.warning()
                 has60sWarningFired = true
+                AnalyticsService.shared.logTimerWarning(seconds: 60, speakerPosition: currentSpeaker.position)
             }
         case .thirtySeconds:
             if !has30sWarningFired {
                 HapticManager.shared.warning()
                 has30sWarningFired = true
+                AnalyticsService.shared.logTimerWarning(seconds: 30, speakerPosition: currentSpeaker.position)
             }
         case .fifteenSeconds:
             if !has15sWarningFired {
                 HapticManager.shared.warning()
                 has15sWarningFired = true
+                AnalyticsService.shared.logTimerWarning(seconds: 15, speakerPosition: currentSpeaker.position)
             }
         case .none:
             break
@@ -178,6 +184,24 @@ final class TimerViewModel {
         guard !isRecording else { return }
 
         do {
+            // Track session started (first recording only)
+            if !hasLoggedSessionStart {
+                sessionStartTime = Date()
+                hasLoggedSessionStart = true
+                AnalyticsService.shared.logRecordingSessionStarted(
+                    format: debateSession.format,
+                    totalRecordings: speakers.count
+                )
+            }
+
+            // Track recording started
+            recordingStartTime = Date()
+            AnalyticsService.shared.logRecordingStarted(
+                speakerPosition: currentSpeaker.position,
+                recordingNumber: currentSpeakerIndex + 1,
+                totalRecordings: speakers.count
+            )
+
             // Start recording
             let url = try audioService.startRecording(
                 debateId: debateSession.id.uuidString,
@@ -192,6 +216,12 @@ final class TimerViewModel {
             timerService.start()
 
         } catch {
+            AnalyticsService.shared.logError(
+                type: "audio_recording_error",
+                message: error.localizedDescription,
+                screen: "TimerMainView",
+                action: "start_recording"
+            )
             errorMessage = error.localizedDescription
             showError = true
         }
@@ -206,7 +236,13 @@ final class TimerViewModel {
             isRecording = false
             currentRecordingURL = nil
             timerService.stop()
-            
+
+            AnalyticsService.shared.logError(
+                type: "audio_recording_error",
+                message: "Recording failed or was stopped unexpectedly",
+                screen: "TimerMainView",
+                action: "stop_recording"
+            )
             errorMessage = "Recording failed or was stopped unexpectedly"
             showError = true
             return
@@ -219,6 +255,19 @@ final class TimerViewModel {
             showError = true
             return
         }
+
+        // Calculate overtime
+        let scheduledDuration = debateSession.speechTimeSeconds
+        let actualDuration = Int(result.duration)
+        let overtime = max(0, actualDuration - scheduledDuration)
+
+        // Track recording stopped
+        AnalyticsService.shared.logRecordingStopped(
+            speakerPosition: currentSpeaker.position,
+            duration: actualDuration,
+            scheduledDuration: scheduledDuration,
+            overtime: overtime
+        )
 
         // Stop timer
         timerService.stop()
@@ -240,6 +289,16 @@ final class TimerViewModel {
 
         try? modelContext.save()
 
+        // Check if session completed
+        if recordings.count == speakers.count {
+            let sessionDuration = sessionStartTime.map { Date().timeIntervalSince($0) } ?? 0
+            AnalyticsService.shared.logRecordingSessionCompleted(
+                format: debateSession.format,
+                totalRecordings: speakers.count,
+                totalDuration: sessionDuration
+            )
+        }
+
         // Start upload
         uploadRecording(recording)
 
@@ -254,6 +313,7 @@ final class TimerViewModel {
     /// Ring the bell manually when user taps the bell icon
     func ringBell() {
         timerService.ringBellManually()
+        AnalyticsService.shared.logManualBellPressed()
     }
 
     // MARK: - Speaker Navigation
