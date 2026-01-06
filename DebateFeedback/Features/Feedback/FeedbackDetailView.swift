@@ -30,28 +30,23 @@ struct FeedbackDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if availableDisplayModes.count > 1 {
-                HStack(spacing: 0) {
-                    ForEach(availableDisplayModes) { mode in
-                        VStack(spacing: 8) {
-                            Text(mode.rawValue)
-                                .font(.subheadline)
-                                .fontWeight(displayMode == mode ? .semibold : .medium)
-                                .foregroundColor(displayMode == mode ? Constants.Colors.primaryAction : .secondary)
+        let displayModes = availableDisplayModes
+        let showTabs = displayModes.count > 1
 
-                            Rectangle()
-                                .fill(displayMode == mode ? Constants.Colors.primaryAction : Color.clear)
-                                .frame(height: 2)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                displayMode = mode
+        return VStack(spacing: 0) {
+            if showTabs {
+                HStack(spacing: 0) {
+                    ForEach(displayModes) { mode in
+                        FeedbackModeTab(
+                            title: mode.rawValue,
+                            isSelected: displayMode == mode,
+                            onSelect: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    displayMode = mode
+                                }
+                                AnalyticsService.shared.logFeedbackTabSwitched(to: mode.rawValue)
                             }
-                            // Track tab switch
-                            AnalyticsService.shared.logFeedbackTabSwitched(to: mode.rawValue)
-                        }
+                        )
                     }
                 }
                 .padding(.top)
@@ -106,15 +101,15 @@ struct FeedbackDetailView: View {
         }
         .onAppear {
             // Track feedback detail viewed
-            let playableMoments = sections.flatMap { $0.moments }
+            let playableMoments = sections.flatMap { $0.playableMoments }
             AnalyticsService.shared.logFeedbackDetailViewed(
                 speakerPosition: recording.speakerPosition,
                 hasPlayableMoments: !playableMoments.isEmpty,
                 playableMomentsCount: playableMoments.count
             )
         }
-        .onChange(of: playbackService.isPlaying) { _, isPlaying in
-            if !isPlaying {
+        .onChange(of: playbackService.isPlaying) {
+            if !playbackService.isPlaying {
                 activeMomentID = nil
             }
         }
@@ -593,7 +588,7 @@ struct FeedbackDetailView: View {
 
     private func playMoment(_ moment: PlayableMoment) {
         // Track playable moment clicked (KEY METRIC!)
-        let allMoments = sections.flatMap { $0.moments }
+        let allMoments = sections.flatMap { $0.playableMoments }
         if let momentIndex = allMoments.firstIndex(where: { $0.id == moment.id }) {
             AnalyticsService.shared.logPlayableMomentClicked(
                 speakerPosition: recording.speakerPosition,
@@ -745,6 +740,27 @@ struct FeedbackSectionData: Identifiable {
     let title: String
     let content: String
     let playableMoments: [PlayableMoment]
+}
+
+struct FeedbackModeTab: View {
+    let title: String
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(isSelected ? .semibold : .medium)
+                .foregroundColor(isSelected ? Constants.Colors.primaryAction : .secondary)
+
+            Rectangle()
+                .fill(isSelected ? Constants.Colors.primaryAction : Color.clear)
+                .frame(height: 2)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+    }
 }
 
 

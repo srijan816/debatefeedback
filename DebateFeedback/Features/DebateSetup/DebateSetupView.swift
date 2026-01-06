@@ -1294,7 +1294,9 @@ struct AssignmentSheet: View {
                             : min(maxSlots(selectedTeam), assignments.count + 1)
                         ForEach(1...maxPosition, id: \.self) { position in
                             let occupant = position <= assignments.count ? assignments[position - 1].name : nil
-                            Text(occupant == nil ? "Position \(position)" : "Position \(position) · \(occupant)")
+                            let occupantLabel = occupant ?? "Open"
+                            let label = "Position \(position) · \(occupantLabel)"
+                            Text(label)
                                 .tag(position)
                         }
                     }
@@ -1317,7 +1319,8 @@ struct AssignmentSheet: View {
                     .disabled(selectedStudent == nil)
                 }
             }
-            .onChange(of: selectedTeam) { newValue in
+            .onChange(of: selectedTeam) {
+                let newValue = selectedTeam
                 let assignments = teamStudents(newValue)
                 let isAlreadyInTeam = selectedStudent.map { student in
                     assignments.contains(where: { $0.id == student.id })
