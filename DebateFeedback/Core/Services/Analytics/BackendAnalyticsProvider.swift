@@ -164,7 +164,7 @@ class BackendAnalyticsProvider: AnalyticsProvider {
             encoder.keyEncodingStrategy = .convertToSnakeCase
             urlRequest.httpBody = try encoder.encode(request)
 
-            let (data, response) = try await session.data(for: urlRequest)
+            let (_, response) = try await session.data(for: urlRequest)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("❌ Analytics: Invalid response")
@@ -215,7 +215,7 @@ class BackendAnalyticsProvider: AnalyticsProvider {
 
 // MARK: - DTOs
 
-struct AnalyticsEventDTO: Codable {
+struct AnalyticsEventDTO: Encodable {
     let event_name: String
     let user_id: String?
     let session_id: String
@@ -267,7 +267,7 @@ struct AnalyticsEventDTO: Codable {
     }
 }
 
-struct LogAnalyticsEventRequest: Codable {
+struct LogAnalyticsEventRequest: Encodable {
     let events: [AnalyticsEventDTO]
 }
 
