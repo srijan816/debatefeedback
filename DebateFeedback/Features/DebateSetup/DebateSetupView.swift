@@ -1139,7 +1139,7 @@ struct TeamSlotBox: View {
 
     private func emptySlotRow(position: Int) -> some View {
         let isActive = position == students.count + 1
-        HStack(spacing: 10) {
+        return HStack(spacing: 10) {
             Text("\(position).")
                 .font(.caption)
                 .foregroundColor(Constants.Colors.textSecondary)
@@ -1266,12 +1266,21 @@ struct AssignmentSheet: View {
                 }
 
                 Section("Team") {
-                    Picker("Team", selection: $selectedTeam) {
-                        ForEach(availableTeams, id: \.self) { team in
-                            Text(teamTitle(team)).tag(team)
+                    if availableTeams.count <= 2 {
+                        Picker("Team", selection: $selectedTeam) {
+                            ForEach(availableTeams, id: \.self) { team in
+                                Text(teamTitle(team)).tag(team)
+                            }
                         }
+                        .pickerStyle(.segmented)
+                    } else {
+                        Picker("Team", selection: $selectedTeam) {
+                            ForEach(availableTeams, id: \.self) { team in
+                                Text(teamTitle(team)).tag(team)
+                            }
+                        }
+                        .pickerStyle(.menu)
                     }
-                    .pickerStyle(availableTeams.count <= 2 ? .segmented : .menu)
                 }
 
                 Section("Position") {

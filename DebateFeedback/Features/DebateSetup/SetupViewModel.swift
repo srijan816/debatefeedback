@@ -329,7 +329,6 @@ final class SetupViewModel {
         case .basicInfo:
             if validateBasicInfo() {
                 // Track step 1 completion
-                let step1Time = step1StartTime.map { Date().timeIntervalSince($0) } ?? 0
                 AnalyticsService.shared.logSetupStep1Completed(
                     format: selectedFormat,
                     studentLevel: studentLevel,
