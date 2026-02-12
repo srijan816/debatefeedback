@@ -52,6 +52,7 @@ final class TimerViewModel {
         self.timerService = TimerService(speechDuration: TimeInterval(debateSession.speechTimeSeconds))
 
         setupSpeakers()
+        updateSpeechDurationForCurrentSpeaker()
         loadExistingRecordings()
         checkMicrophonePermission()
     }
@@ -115,8 +116,15 @@ final class TimerViewModel {
 
     /// Time remaining until expected end
     var timeRemaining: TimeInterval {
-        let expectedDuration = TimeInterval(debateSession.speechTimeSeconds)
-        return max(0, expectedDuration - elapsedTime)
+        max(0, currentSpeechDuration - elapsedTime)
+    }
+
+    private var currentSpeechDuration: TimeInterval {
+        let position = currentSpeaker.position.lowercased()
+        if position.contains("reply"), let replySeconds = debateSession.replyTimeSeconds {
+            return TimeInterval(replySeconds)
+        }
+        return TimeInterval(debateSession.speechTimeSeconds)
     }
 
     /// Warning state based on time remaining
@@ -184,6 +192,7 @@ final class TimerViewModel {
         guard !isRecording else { return }
 
         do {
+            updateSpeechDurationForCurrentSpeaker()
             // Track session started (first recording only)
             if !hasLoggedSessionStart {
                 sessionStartTime = Date()
@@ -257,7 +266,7 @@ final class TimerViewModel {
         }
 
         // Calculate overtime
-        let scheduledDuration = debateSession.speechTimeSeconds
+        let scheduledDuration = Int(currentSpeechDuration)
         let actualDuration = Int(result.duration)
         let overtime = max(0, actualDuration - scheduledDuration)
 
@@ -339,6 +348,7 @@ final class TimerViewModel {
 
         currentSpeakerIndex += 1
         timerService.reset()
+        updateSpeechDurationForCurrentSpeaker()
 
         // Reset warning flags for new speaker
         has60sWarningFired = false
@@ -351,6 +361,7 @@ final class TimerViewModel {
 
         currentSpeakerIndex -= 1
         timerService.reset()
+        updateSpeechDurationForCurrentSpeaker()
 
         // Reset warning flags for new speaker
         has60sWarningFired = false
@@ -511,6 +522,10 @@ final class TimerViewModel {
 
     func viewFeedback() {
         // Navigation handled by coordinator
+    }
+
+    private func updateSpeechDurationForCurrentSpeaker() {
+        timerService.updateSpeechDuration(currentSpeechDuration)
     }
 
     // MARK: - Playback Management

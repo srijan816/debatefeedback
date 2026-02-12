@@ -27,13 +27,19 @@ final class TimerService {
     private var bellSoundURL: URL?
     private let bellGap: TimeInterval = 0.18
 
-    private let speechDuration: TimeInterval
+    private(set) var speechDuration: TimeInterval
     private var bellsScheduled: [TimeInterval] = []
     private var bellsFired: Set<Int> = []
 
     init(speechDuration: TimeInterval) {
         self.speechDuration = speechDuration
         setupBellPlayers()
+        scheduleBells()
+    }
+
+    func updateSpeechDuration(_ duration: TimeInterval) {
+        speechDuration = duration
+        bellsFired.removeAll()
         scheduleBells()
     }
 

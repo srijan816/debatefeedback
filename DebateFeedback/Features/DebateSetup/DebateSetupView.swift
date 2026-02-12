@@ -6,6 +6,9 @@
 
 import SwiftUI
 import SwiftData
+import CoreTransferable
+import UniformTypeIdentifiers
+import UIKit
 
 struct DebateSetupView: View {
     @Environment(AppCoordinator.self) private var coordinator
@@ -13,7 +16,7 @@ struct DebateSetupView: View {
 
     @State private var viewModel = SetupViewModel()
     @FocusState private var isStudentNameFieldFocused: Bool
-    @State private var assignmentContext: AssignmentContext?
+    @State private var isUnassignedDropTargeted = false
 
     var body: some View {
         NavigationStack {
@@ -44,6 +47,7 @@ struct DebateSetupView: View {
                     }
                     .onTapGesture {
                         // Dismiss keyboard when tapping outside text field
+                        UIApplication.shared.endEditing()
                         isStudentNameFieldFocused = false
                     }
 
@@ -94,21 +98,6 @@ struct DebateSetupView: View {
             icon: "checkmark.circle.fill",
             type: viewModel.toastType
         )
-        .sheet(item: $assignmentContext) { context in
-            AssignmentSheet(
-                context: context,
-                unassignedStudents: viewModel.unassignedStudents(),
-                availableTeams: availableTeams,
-                teamTitle: teamTitle,
-                maxSlots: { team in
-                    viewModel.maxSlots(for: team)
-                },
-                teamStudents: teamStudents(for:),
-                onAssign: { student, team, position in
-                    viewModel.assignToTeam(student, team: team, position: position)
-                }
-            )
-        }
         .task {
             await viewModel.loadScheduleIfNeeded(for: coordinator.currentTeacher)
         }
@@ -144,6 +133,10 @@ struct DebateSetupView: View {
             viewModel.ooTeam = findStudents(ids: composition.oo)
             viewModel.cgTeam = findStudents(ids: composition.cg)
             viewModel.coTeam = findStudents(ids: composition.co)
+            viewModel.propReplySpeakerId = composition.propReply.flatMap { UUID(uuidString: $0) }
+            viewModel.oppReplySpeakerId = composition.oppReply.flatMap { UUID(uuidString: $0) }
+            viewModel.setReplySpeaker(team: .prop, studentId: viewModel.propReplySpeakerId)
+            viewModel.setReplySpeaker(team: .opp, studentId: viewModel.oppReplySpeakerId)
         }
 
         // Go to team assignment step
@@ -569,7 +562,7 @@ struct DebateSetupView: View {
 
     private var teamAssignmentStep: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Add Students & Assign Teams")
+            Text("Add Students & Drag to Assign")
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundColor(Constants.Colors.textPrimary)
@@ -652,6 +645,89 @@ struct DebateSetupView: View {
             case .ap:
                 asianParliamentaryLayout
             }
+
+            if viewModel.selectedFormat.hasReplySpeeches && viewModel.shouldIncludeReplySpeeches {
+                replySpeakerSelection
+            }
+        }
+    }
+
+    private var replySpeakerSelection: some View {
+        let propCandidates = Array(viewModel.propTeam.prefix(2))
+        let oppCandidates = Array(viewModel.oppTeam.prefix(2))
+        let propAuto = viewModel.propTeam.count >= 4
+        let oppAuto = viewModel.oppTeam.count >= 4
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Reply Speakers")
+                .font(.headline)
+                .foregroundColor(Constants.Colors.textPrimary)
+
+            if viewModel.hasAutoReplySpeakers {
+                Text("Reply speakers are auto-selected when a 4th speaker is assigned.")
+                    .font(.caption)
+                    .foregroundColor(Constants.Colors.textSecondary)
+            } else {
+                Text("Choose the reply speaker from the first two speakers.")
+                    .font(.caption)
+                    .foregroundColor(Constants.Colors.textSecondary)
+            }
+
+            replySpeakerRow(
+                title: teamTitle(.prop),
+                candidates: propCandidates,
+                selection: Binding(
+                    get: { viewModel.propReplySpeakerId },
+                    set: { viewModel.setReplySpeaker(team: .prop, studentId: $0) }
+                ),
+                isAuto: propAuto,
+                autoName: viewModel.propTeam.count >= 4 ? viewModel.propTeam[3].name : nil
+            )
+
+            replySpeakerRow(
+                title: teamTitle(.opp),
+                candidates: oppCandidates,
+                selection: Binding(
+                    get: { viewModel.oppReplySpeakerId },
+                    set: { viewModel.setReplySpeaker(team: .opp, studentId: $0) }
+                ),
+                isAuto: oppAuto,
+                autoName: viewModel.oppTeam.count >= 4 ? viewModel.oppTeam[3].name : nil
+            )
+        }
+        .padding()
+        .glassmorphism(borderColor: Constants.Colors.softPink)
+    }
+
+    private func replySpeakerRow(
+        title: String,
+        candidates: [Student],
+        selection: Binding<UUID?>,
+        isAuto: Bool,
+        autoName: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(title) Reply")
+                .font(.subheadline)
+                .foregroundColor(Constants.Colors.textSecondary)
+
+            if isAuto {
+                let name = autoName ?? "Auto"
+                Text("\(name) (auto)")
+                    .font(.subheadline)
+                    .foregroundColor(Constants.Colors.textPrimary)
+            } else if candidates.count < 2 {
+                Text("Add at least two speakers to choose.")
+                    .font(.subheadline)
+                    .foregroundColor(Constants.Colors.textSecondary)
+            } else {
+                Picker("Reply Speaker", selection: selection) {
+                    ForEach(candidates, id: \.id) { student in
+                        Text(student.name).tag(Optional(student.id))
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
         }
     }
 
@@ -681,6 +757,10 @@ struct DebateSetupView: View {
                     .foregroundColor(Constants.Colors.textSecondary)
             }
 
+            Text("Drag students into a team slot to assign. Drag within a team to reorder.")
+                .font(.caption)
+                .foregroundColor(Constants.Colors.textSecondary)
+
             if viewModel.students.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "person.3")
@@ -705,11 +785,8 @@ struct DebateSetupView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(unassigned, id: \.id) { student in
-                        UnassignedStudentRow(
+                        DraggableStudentRow(
                             student: student,
-                            onAssign: {
-                                presentAssignmentSheet(student: student, team: nil, position: nil)
-                            },
                             onRemove: {
                                 viewModel.removeStudent(student)
                             }
@@ -720,17 +797,16 @@ struct DebateSetupView: View {
         }
         .padding()
         .glassmorphism(borderColor: Constants.Colors.softCyan)
-    }
-
-    private var availableTeams: [SetupViewModel.TeamType] {
-        switch viewModel.selectedFormat.teamStructure {
-        case .propOpp:
-            return [.prop, .opp]
-        case .britishParliamentary:
-            return [.og, .oo, .cg, .co]
-        case .asianParliamentary:
-            return [.prop, .opp]
-        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isUnassignedDropTargeted ? Constants.Colors.primaryBlue.opacity(0.7) : .clear, lineWidth: 2)
+        )
+        .dropDestination(for: StudentDragPayload.self, action: { items, _ in
+            guard let payload = items.first else { return false }
+            return handleUnassignDrop(payload)
+        }, isTargeted: { isTargeting in
+            isUnassignedDropTargeted = isTargeting
+        })
     }
 
     private func teamTitle(_ team: SetupViewModel.TeamType) -> String {
@@ -784,34 +860,24 @@ struct DebateSetupView: View {
         }
     }
 
-    private func teamStudents(for team: SetupViewModel.TeamType) -> [Student] {
-        switch team {
-        case .prop:
-            return viewModel.propTeam
-        case .opp:
-            return viewModel.oppTeam
-        case .og:
-            return viewModel.ogTeam
-        case .oo:
-            return viewModel.ooTeam
-        case .cg:
-            return viewModel.cgTeam
-        case .co:
-            return viewModel.coTeam
-        }
+    private func student(with id: UUID) -> Student? {
+        viewModel.students.first { $0.id == id }
     }
 
-    private func presentAssignmentSheet(
-        student: Student?,
-        team: SetupViewModel.TeamType?,
+    private func handleDrop(
+        _ payload: StudentDragPayload,
+        team: SetupViewModel.TeamType,
         position: Int?
-    ) {
-        assignmentContext = AssignmentContext(
-            student: student,
-            team: team,
-            position: position,
-            allowsStudentSelection: student == nil
-        )
+    ) -> Bool {
+        guard let student = student(with: payload.studentId) else { return false }
+        viewModel.assignToTeam(student, team: team, position: position)
+        return true
+    }
+
+    private func handleUnassignDrop(_ payload: StudentDragPayload) -> Bool {
+        guard let student = student(with: payload.studentId) else { return false }
+        viewModel.removeFromAllTeams(student)
+        return true
     }
 
     private var twoTeamLayout: some View {
@@ -822,11 +888,11 @@ struct DebateSetupView: View {
                 borderColor: teamBorderColor(.prop),
                 students: viewModel.propTeam,
                 maxSlots: viewModel.maxSlots(for: .prop),
-                onSlotTap: { position, student in
-                    presentAssignmentSheet(student: student, team: .prop, position: position)
-                },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onDrop: { payload, position in
+                    handleDrop(payload, team: .prop, position: position)
                 }
             )
 
@@ -836,11 +902,11 @@ struct DebateSetupView: View {
                 borderColor: teamBorderColor(.opp),
                 students: viewModel.oppTeam,
                 maxSlots: viewModel.maxSlots(for: .opp),
-                onSlotTap: { position, student in
-                    presentAssignmentSheet(student: student, team: .opp, position: position)
-                },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onDrop: { payload, position in
+                    handleDrop(payload, team: .opp, position: position)
                 }
             )
         }
@@ -854,11 +920,11 @@ struct DebateSetupView: View {
                 borderColor: teamBorderColor(.og),
                 students: viewModel.ogTeam,
                 maxSlots: viewModel.maxSlots(for: .og),
-                onSlotTap: { position, student in
-                    presentAssignmentSheet(student: student, team: .og, position: position)
-                },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onDrop: { payload, position in
+                    handleDrop(payload, team: .og, position: position)
                 }
             )
 
@@ -868,11 +934,11 @@ struct DebateSetupView: View {
                 borderColor: teamBorderColor(.oo),
                 students: viewModel.ooTeam,
                 maxSlots: viewModel.maxSlots(for: .oo),
-                onSlotTap: { position, student in
-                    presentAssignmentSheet(student: student, team: .oo, position: position)
-                },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onDrop: { payload, position in
+                    handleDrop(payload, team: .oo, position: position)
                 }
             )
 
@@ -882,11 +948,11 @@ struct DebateSetupView: View {
                 borderColor: teamBorderColor(.cg),
                 students: viewModel.cgTeam,
                 maxSlots: viewModel.maxSlots(for: .cg),
-                onSlotTap: { position, student in
-                    presentAssignmentSheet(student: student, team: .cg, position: position)
-                },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onDrop: { payload, position in
+                    handleDrop(payload, team: .cg, position: position)
                 }
             )
 
@@ -896,11 +962,11 @@ struct DebateSetupView: View {
                 borderColor: teamBorderColor(.co),
                 students: viewModel.coTeam,
                 maxSlots: viewModel.maxSlots(for: .co),
-                onSlotTap: { position, student in
-                    presentAssignmentSheet(student: student, team: .co, position: position)
-                },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onDrop: { payload, position in
+                    handleDrop(payload, team: .co, position: position)
                 }
             )
         }
@@ -914,11 +980,11 @@ struct DebateSetupView: View {
                 borderColor: teamBorderColor(.prop),
                 students: viewModel.propTeam,
                 maxSlots: viewModel.maxSlots(for: .prop),
-                onSlotTap: { position, student in
-                    presentAssignmentSheet(student: student, team: .prop, position: position)
-                },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onDrop: { payload, position in
+                    handleDrop(payload, team: .prop, position: position)
                 }
             )
 
@@ -928,11 +994,11 @@ struct DebateSetupView: View {
                 borderColor: teamBorderColor(.opp),
                 students: viewModel.oppTeam,
                 maxSlots: viewModel.maxSlots(for: .opp),
-                onSlotTap: { position, student in
-                    presentAssignmentSheet(student: student, team: .opp, position: position)
-                },
                 onRemove: { student in
                     viewModel.removeFromAllTeams(student)
+                },
+                onDrop: { payload, position in
+                    handleDrop(payload, team: .opp, position: position)
                 }
             )
         }
@@ -1030,23 +1096,15 @@ struct DebateSetupView: View {
 
 // MARK: - Supporting Views
 
-struct UnassignedStudentRow: View {
+struct DraggableStudentRow: View {
     let student: Student
-    let onAssign: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: onAssign) {
-                HStack(spacing: 10) {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundStyle(Constants.Gradients.primaryButton)
-                    Text(student.name)
-                        .font(.headline)
-                        .foregroundColor(Constants.Colors.textPrimary)
-                }
-            }
-            .buttonStyle(.plain)
+            Text(student.name)
+                .font(.headline)
+                .foregroundColor(Constants.Colors.textPrimary)
 
             Spacer()
 
@@ -1059,9 +1117,20 @@ struct UnassignedStudentRow: View {
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
+        .frame(minHeight: 44)
         .background(Constants.Colors.backgroundSecondary)
         .cornerRadius(12)
-        .accessibilityHint("Tap to assign \(student.name)")
+        .contentShape(Rectangle())
+        .draggable(StudentDragPayload(studentId: student.id))
+        .accessibilityHint("Drag to assign \(student.name) to a team")
+    }
+}
+
+struct StudentDragPayload: Codable, Hashable, Transferable {
+    let studentId: UUID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .json)
     }
 }
 
@@ -1071,8 +1140,10 @@ struct TeamSlotBox: View {
     let borderColor: Color
     let students: [Student]
     let maxSlots: Int
-    let onSlotTap: (Int, Student?) -> Void
     let onRemove: (Student) -> Void
+    let onDrop: (StudentDragPayload, Int?) -> Bool
+
+    @State private var isTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1081,6 +1152,16 @@ struct TeamSlotBox: View {
         }
         .padding()
         .background(backgroundView)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(isTargeted ? borderColor.opacity(0.8) : .clear, lineWidth: 2)
+        )
+        .dropDestination(for: StudentDragPayload.self, action: { items, _ in
+            guard let payload = items.first else { return false }
+            return onDrop(payload, nil)
+        }, isTargeted: { isTargeting in
+            isTargeted = isTargeting
+        })
     }
 
     private var headerView: some View {
@@ -1098,72 +1179,17 @@ struct TeamSlotBox: View {
         VStack(spacing: 8) {
             ForEach(0..<maxSlots, id: \.self) { index in
                 let position = index + 1
-                if index < students.count {
-                    filledSlotRow(position: position, student: students[index])
-                } else {
-                    emptySlotRow(position: position)
-                }
+                TeamSlotRow(
+                    position: position,
+                    student: index < students.count ? students[index] : nil,
+                    gradient: gradient,
+                    borderColor: borderColor,
+                    onRemove: onRemove,
+                    onDrop: onDrop
+                )
             }
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private func filledSlotRow(position: Int, student: Student) -> some View {
-        HStack(spacing: 10) {
-            Text("\(position).")
-                .font(.caption)
-                .foregroundColor(Constants.Colors.textSecondary)
-                .frame(width: 18, alignment: .leading)
-            Text(student.name)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(Constants.Colors.textPrimary)
-            Spacer()
-            Button {
-                onRemove(student)
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(Constants.Colors.softPink)
-            }
-            .buttonStyle(.borderless)
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 12)
-        .background(Constants.Colors.backgroundSecondary)
-        .cornerRadius(12)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onSlotTap(position, student)
-        }
-    }
-
-    private func emptySlotRow(position: Int) -> some View {
-        let isActive = position == students.count + 1
-        return HStack(spacing: 10) {
-            Text("\(position).")
-                .font(.caption)
-                .foregroundColor(Constants.Colors.textSecondary)
-                .frame(width: 18, alignment: .leading)
-            Text(isActive ? "Tap to assign" : "Fill above first")
-                .font(.subheadline)
-                .foregroundColor(Constants.Colors.textSecondary)
-            Spacer()
-            Image(systemName: "plus.circle")
-                .foregroundStyle(gradient)
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(borderColor.opacity(0.35), style: StrokeStyle(lineWidth: 1.2, dash: [5]))
-        )
-        .contentShape(Rectangle())
-        .opacity(isActive ? 1.0 : 0.45)
-        .onTapGesture {
-            if isActive {
-                onSlotTap(position, nil)
-            }
-        }
     }
 
     private var backgroundView: some View {
@@ -1177,163 +1203,92 @@ struct TeamSlotBox: View {
     }
 }
 
-struct AssignmentContext: Identifiable {
-    let id = UUID()
+struct TeamSlotRow: View {
+    let position: Int
     let student: Student?
-    let team: SetupViewModel.TeamType?
-    let position: Int?
-    let allowsStudentSelection: Bool
-}
+    let gradient: LinearGradient
+    let borderColor: Color
+    let onRemove: (Student) -> Void
+    let onDrop: (StudentDragPayload, Int?) -> Bool
 
-struct AssignmentSheet: View {
-    let context: AssignmentContext
-    let unassignedStudents: [Student]
-    let availableTeams: [SetupViewModel.TeamType]
-    let teamTitle: (SetupViewModel.TeamType) -> String
-    let maxSlots: (SetupViewModel.TeamType) -> Int
-    let teamStudents: (SetupViewModel.TeamType) -> [Student]
-    let onAssign: (Student, SetupViewModel.TeamType, Int) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var selectedTeam: SetupViewModel.TeamType
-    @State private var selectedPosition: Int
-    @State private var selectedStudentId: UUID?
-
-    init(
-        context: AssignmentContext,
-        unassignedStudents: [Student],
-        availableTeams: [SetupViewModel.TeamType],
-        teamTitle: @escaping (SetupViewModel.TeamType) -> String,
-        maxSlots: @escaping (SetupViewModel.TeamType) -> Int,
-        teamStudents: @escaping (SetupViewModel.TeamType) -> [Student],
-        onAssign: @escaping (Student, SetupViewModel.TeamType, Int) -> Void
-    ) {
-        self.context = context
-        self.unassignedStudents = unassignedStudents
-        self.availableTeams = availableTeams
-        self.teamTitle = teamTitle
-        self.maxSlots = maxSlots
-        self.teamStudents = teamStudents
-        self.onAssign = onAssign
-
-        let defaultTeam = context.team ?? availableTeams.first ?? .prop
-        _selectedTeam = State(initialValue: defaultTeam)
-        _selectedPosition = State(initialValue: context.position ?? 1)
-        _selectedStudentId = State(initialValue: context.student?.id ?? unassignedStudents.first?.id)
-    }
-
-    private var studentOptions: [Student] {
-        guard context.allowsStudentSelection else {
-            return context.student.map { [$0] } ?? []
-        }
-
-        var options = unassignedStudents
-        if let student = context.student, !options.contains(where: { $0.id == student.id }) {
-            options.insert(student, at: 0)
-        }
-        return options
-    }
-
-    private var selectedStudent: Student? {
-        if let student = context.student, !context.allowsStudentSelection {
-            return student
-        }
-        if let selectedId = selectedStudentId {
-            return studentOptions.first(where: { $0.id == selectedId })
-        }
-        return nil
-    }
+    @State private var isTargeted = false
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Student") {
-                    if context.allowsStudentSelection {
-                        if studentOptions.isEmpty {
-                            Text("No unassigned students available.")
-                                .foregroundColor(Constants.Colors.textSecondary)
-                        } else {
-                            Picker("Student", selection: $selectedStudentId) {
-                                ForEach(studentOptions, id: \.id) { student in
-                                    Text(student.name).tag(Optional(student.id))
-                                }
-                            }
-                        }
-                    } else {
-                        Text(context.student?.name ?? "Select student")
-                            .font(.headline)
-                    }
-                }
+        HStack(spacing: 10) {
+            Text("\(position).")
+                .font(.caption)
+                .foregroundColor(Constants.Colors.textSecondary)
+                .frame(width: 18, alignment: .leading)
 
-                Section("Team") {
-                    if availableTeams.count <= 2 {
-                        Picker("Team", selection: $selectedTeam) {
-                            ForEach(availableTeams, id: \.self) { team in
-                                Text(teamTitle(team)).tag(team)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    } else {
-                        Picker("Team", selection: $selectedTeam) {
-                            ForEach(availableTeams, id: \.self) { team in
-                                Text(teamTitle(team)).tag(team)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                    }
+            if let student {
+                Image(systemName: "line.3.horizontal")
+                    .foregroundColor(Constants.Colors.textTertiary)
+                Text(student.name)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Constants.Colors.textPrimary)
+                Spacer()
+                Button {
+                    onRemove(student)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(Constants.Colors.softPink)
                 }
-
-                Section("Position") {
-                    Picker("Position", selection: $selectedPosition) {
-                        let assignments = teamStudents(selectedTeam)
-                        let isAlreadyInTeam = selectedStudent.map { student in
-                            assignments.contains(where: { $0.id == student.id })
-                        } ?? false
-                        let maxPosition = isAlreadyInTeam
-                            ? maxSlots(selectedTeam)
-                            : min(maxSlots(selectedTeam), assignments.count + 1)
-                        ForEach(1...maxPosition, id: \.self) { position in
-                            let occupant = position <= assignments.count ? assignments[position - 1].name : nil
-                            let occupantLabel = occupant ?? "Open"
-                            let label = "Position \(position) · \(occupantLabel)"
-                            Text(label)
-                                .tag(position)
-                        }
-                    }
-                    .pickerStyle(.wheel)
-                }
-            }
-            .navigationTitle("Assign Student")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Assign") {
-                        guard let student = selectedStudent else { return }
-                        onAssign(student, selectedTeam, selectedPosition)
-                        dismiss()
-                    }
-                    .disabled(selectedStudent == nil)
-                }
-            }
-            .onChange(of: selectedTeam) {
-                let newValue = selectedTeam
-                let assignments = teamStudents(newValue)
-                let isAlreadyInTeam = selectedStudent.map { student in
-                    assignments.contains(where: { $0.id == student.id })
-                } ?? false
-                let maxPosition = isAlreadyInTeam
-                    ? maxSlots(newValue)
-                    : min(maxSlots(newValue), assignments.count + 1)
-                if selectedPosition > maxPosition {
-                    selectedPosition = maxPosition
-                }
+                .buttonStyle(.borderless)
+            } else {
+                Text("Drop student here")
+                    .font(.subheadline)
+                    .foregroundColor(Constants.Colors.textSecondary)
+                Spacer()
+                Image(systemName: "arrow.down.circle")
+                    .foregroundStyle(gradient)
             }
         }
-        .presentationDetents([.medium])
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
+        .background(rowBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isTargeted ? borderColor.opacity(0.8) : .clear, lineWidth: 2)
+        )
+        .contentShape(Rectangle())
+        .draggableIfAvailable(student.map { StudentDragPayload(studentId: $0.id) })
+        .dropDestination(for: StudentDragPayload.self, action: { items, _ in
+            guard let payload = items.first else { return false }
+            return onDrop(payload, position)
+        }, isTargeted: { isTargeting in
+            isTargeted = isTargeting
+        })
+    }
+
+    private var rowBackground: some View {
+        Group {
+            if student != nil {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Constants.Colors.backgroundSecondary)
+            } else {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(borderColor.opacity(0.35), style: StrokeStyle(lineWidth: 1.2, dash: [5]))
+            }
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func draggableIfAvailable(_ payload: StudentDragPayload?) -> some View {
+        if let payload {
+            self.draggable(payload)
+        } else {
+            self
+        }
+    }
+}
+
+extension UIApplication {
+    func endEditing() {
+        sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 

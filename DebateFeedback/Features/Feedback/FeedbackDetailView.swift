@@ -463,7 +463,7 @@ struct FeedbackDetailView: View {
             // DIAGNOSTIC LOGGING - Phase 1
             print("========== FEEDBACK RESPONSE DIAGNOSTICS ==========")
             print("📥 speechId: \(response.speechId)")
-            print("📥 feedbackText length: \(response.feedbackText.count) chars")
+            print("📥 feedbackText length: \(response.resolvedFeedbackText.count) chars")
             print("📥 playableMoments: \(response.playableMoments?.count ?? 0) items")
             if let moments = response.playableMoments {
                 for (index, moment) in moments.enumerated() {
@@ -474,7 +474,14 @@ struct FeedbackDetailView: View {
             print("📥 scores: \(response.scores?.description ?? "nil")")
             print("===================================================")
 
-            feedbackContent = response.feedbackText
+            let resolvedText = response.resolvedFeedbackText
+            if resolvedText.isEmpty, let responseSections = response.sections, !responseSections.isEmpty {
+                feedbackContent = responseSections
+                    .map { "\($0.title)\n\($0.content)" }
+                    .joined(separator: "\n\n")
+            } else {
+                feedbackContent = resolvedText
+            }
             sections = buildSections(from: response)
 
             recording.feedbackContent = feedbackContent
@@ -507,7 +514,17 @@ struct FeedbackDetailView: View {
         var resultSections: [FeedbackSectionData] = []
         
         // Parse sections from feedback text
-        resultSections = parseFeedbackSections(from: response.feedbackText)
+        if let responseSections = response.sections, !responseSections.isEmpty {
+            resultSections = responseSections.map { section in
+                FeedbackSectionData(
+                    title: section.title,
+                    content: section.content,
+                    playableMoments: []
+                )
+            }
+        } else {
+            resultSections = parseFeedbackSections(from: response.resolvedFeedbackText)
+        }
         
         // 3. Inject Structured Playable Moments
         if let moments = response.playableMoments, !moments.isEmpty {
@@ -519,7 +536,7 @@ struct FeedbackDetailView: View {
                 let specialSection = FeedbackSectionData(title: "Playable Moments", content: "", playableMoments: moments)
                 resultSections.insert(specialSection, at: 0)
             }
-        } else if resultSections.isEmpty && !response.feedbackText.isEmpty {
+        } else if resultSections.isEmpty && !response.resolvedFeedbackText.isEmpty {
              // If we have text but no sections and no API moments, try to see if we have cached moments?
              // Or just rely on what we parsed.
         }

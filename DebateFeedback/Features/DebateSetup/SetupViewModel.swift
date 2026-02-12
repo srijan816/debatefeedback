@@ -38,6 +38,8 @@ final class SetupViewModel {
     var ooTeam: [Student] = []
     var cgTeam: [Student] = []
     var coTeam: [Student] = []
+    var propReplySpeakerId: UUID?
+    var oppReplySpeakerId: UUID?
 
     // UI State
     var showError = false
@@ -440,6 +442,7 @@ final class SetupViewModel {
         }
 
         setTeamStudents(team, students: teamList)
+        syncReplySpeakerSelections()
 
         AnalyticsService.shared.logSetupStudentAssigned(
             team: team.rawValue,
@@ -454,12 +457,13 @@ final class SetupViewModel {
         ooTeam.removeAll { $0.id == student.id }
         cgTeam.removeAll { $0.id == student.id }
         coTeam.removeAll { $0.id == student.id }
+        syncReplySpeakerSelections()
     }
 
     func maxSlots(for team: TeamType) -> Int {
         switch selectedFormat.teamStructure {
         case .propOpp:
-            return 3
+            return selectedFormat.hasReplySpeeches ? 4 : 3
         case .britishParliamentary:
             return 2
         case .asianParliamentary:
@@ -543,6 +547,7 @@ final class SetupViewModel {
             let student = coTeam.remove(at: sourceIndex)
             coTeam.insert(student, at: destinationIndex)
         }
+        syncReplySpeakerSelections()
 
         // Track student reordered
         AnalyticsService.shared.logSetupStudentReordered(
@@ -550,6 +555,52 @@ final class SetupViewModel {
             fromPosition: sourceIndex + 1,
             toPosition: destinationIndex + 1
         )
+    }
+
+    var hasAutoReplySpeakers: Bool {
+        guard selectedFormat.hasReplySpeeches else { return false }
+        return propTeam.count >= 4 || oppTeam.count >= 4
+    }
+
+    var shouldIncludeReplySpeeches: Bool {
+        guard selectedFormat.hasReplySpeeches else { return false }
+        return includeReplySpeeches || hasAutoReplySpeakers
+    }
+
+    func resolvedReplySpeakerId(for team: TeamType) -> UUID? {
+        let teamStudents = teamStudents(for: team)
+        if teamStudents.count >= 4 {
+            return teamStudents[3].id
+        }
+        let candidates = Array(teamStudents.prefix(2))
+        guard candidates.count >= 2 else { return nil }
+        let current = team == .prop ? propReplySpeakerId : oppReplySpeakerId
+        if let current, candidates.contains(where: { $0.id == current }) {
+            return current
+        }
+        return candidates.first?.id
+    }
+
+    func setReplySpeaker(team: TeamType, studentId: UUID?) {
+        switch team {
+        case .prop:
+            propReplySpeakerId = studentId
+        case .opp:
+            oppReplySpeakerId = studentId
+        default:
+            return
+        }
+        syncReplySpeakerSelections()
+    }
+
+    private func syncReplySpeakerSelections() {
+        guard selectedFormat.hasReplySpeeches else {
+            propReplySpeakerId = nil
+            oppReplySpeakerId = nil
+            return
+        }
+        propReplySpeakerId = resolvedReplySpeakerId(for: .prop)
+        oppReplySpeakerId = resolvedReplySpeakerId(for: .opp)
     }
 
     func unassignedStudents() -> [Student] {
@@ -705,12 +756,16 @@ final class SetupViewModel {
             totalSetupTime: totalSetupTime
         )
 
+        let replySeconds = shouldIncludeReplySpeeches
+            ? (replyTimeSeconds ?? lastReplyTimeSeconds ?? selectedFormat.defaultReplyTime ?? 120)
+            : nil
+
         let session = DebateSession(
             motion: motion,
             format: selectedFormat,
             studentLevel: studentLevel,
             speechTimeSeconds: speechTimeSeconds,
-            replyTimeSeconds: replyTimeSeconds,
+            replyTimeSeconds: replySeconds,
             isGuestMode: teacher == nil,
             teacher: teacher,
             classId: selectedClassId,
@@ -723,6 +778,10 @@ final class SetupViewModel {
         case .wsdc, .australs:
             composition.prop = propTeam.map { $0.id.uuidString }
             composition.opp = oppTeam.map { $0.id.uuidString }
+            if shouldIncludeReplySpeeches {
+                composition.propReply = resolvedReplySpeakerId(for: .prop)?.uuidString
+                composition.oppReply = resolvedReplySpeakerId(for: .opp)?.uuidString
+            }
         case .bp:
             composition.og = ogTeam.map { $0.id.uuidString }
             composition.oo = ooTeam.map { $0.id.uuidString }
@@ -833,13 +892,15 @@ final class SetupViewModel {
             if let propIds = composition.prop {
                 teamsData.prop = propIds.enumerated().map { index, id in
                     let student = students.first(where: { $0.id.uuidString == id })
-                    return StudentData(name: student?.name ?? "Unknown", position: "Prop \(index + 1)")
+                    let position = index == 3 ? "Prop Reply" : "Prop \(index + 1)"
+                    return StudentData(name: student?.name ?? "Unknown", position: position)
                 }
             }
             if let oppIds = composition.opp {
                 teamsData.opp = oppIds.enumerated().map { index, id in
                     let student = students.first(where: { $0.id.uuidString == id })
-                    return StudentData(name: student?.name ?? "Unknown", position: "Opp \(index + 1)")
+                    let position = index == 3 ? "Opp Reply" : "Opp \(index + 1)"
+                    return StudentData(name: student?.name ?? "Unknown", position: position)
                 }
             }
         case .bp:
@@ -917,6 +978,7 @@ final class SetupViewModel {
             includeReplySpeeches = false
             replyTimeSeconds = nil
         }
+        syncReplySpeakerSelections()
     }
 
     func setReplySpeechesEnabled(_ enabled: Bool) {
@@ -928,6 +990,7 @@ final class SetupViewModel {
             } else {
                 replyTimeSeconds = selectedFormat.defaultReplyTime ?? 120
             }
+            syncReplySpeakerSelections()
         } else {
             if let current = replyTimeSeconds {
                 lastReplyTimeSeconds = current

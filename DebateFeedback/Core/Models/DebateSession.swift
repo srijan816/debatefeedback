@@ -124,6 +124,8 @@ struct TeamComposition: Codable {
     // Standard 3v3 formats
     var prop: [String]? // Student IDs
     var opp: [String]?
+    var propReply: String?
+    var oppReply: String?
 
     // British Parliamentary
     var og: [String]?
@@ -139,15 +141,25 @@ struct TeamComposition: Codable {
             var speakers: [(String, String)] = []
             let propSpeakers = prop ?? []
             let oppSpeakers = opp ?? []
-            let maxCount = max(propSpeakers.count, oppSpeakers.count)
+            let maxMain = max(min(propSpeakers.count, 3), min(oppSpeakers.count, 3))
 
-            for i in 0..<maxCount {
+            for i in 0..<maxMain {
                 if i < propSpeakers.count {
                     speakers.append((propSpeakers[i], "Prop \(i + 1)"))
                 }
                 if i < oppSpeakers.count {
                     speakers.append((oppSpeakers[i], "Opp \(i + 1)"))
                 }
+            }
+
+            let resolvedPropReply = propSpeakers.count >= 4 ? propSpeakers[3] : propReply
+            let resolvedOppReply = oppSpeakers.count >= 4 ? oppSpeakers[3] : oppReply
+
+            if let oppReply = resolvedOppReply {
+                speakers.append((oppReply, "Opp Reply"))
+            }
+            if let propReply = resolvedPropReply {
+                speakers.append((propReply, "Prop Reply"))
             }
             return speakers
 

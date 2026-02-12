@@ -6,6 +6,7 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct TimerMainView: View {
     let debateSession: DebateSession
@@ -104,6 +105,18 @@ struct TimerMainView: View {
         }
         .subtleBoundaryEffects(showTopEdge: false, showBottomEdge: true, intensity: 0.07)
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
+        .onAppear {
+            updateIdleTimer(for: viewModel)
+        }
+        .onChange(of: viewModel.timerState) { _ in
+            updateIdleTimer(for: viewModel)
+        }
+        .onChange(of: viewModel.isRecording) { _ in
+            updateIdleTimer(for: viewModel)
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
     }
 
     // MARK: - Motion Header
@@ -151,6 +164,11 @@ struct TimerMainView: View {
         .padding(.horizontal, 20)
         .padding(.bottom, 16)
         .background(Constants.Colors.backgroundSecondary)
+    }
+
+    private func updateIdleTimer(for viewModel: TimerViewModel) {
+        let shouldDisable = viewModel.timerState == .running || viewModel.isRecording
+        UIApplication.shared.isIdleTimerDisabled = shouldDisable
     }
 
     // MARK: - Timer Display

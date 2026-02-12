@@ -704,8 +704,10 @@ struct SpeechStatusResponse: Codable {
 
 struct FeedbackContentResponse: Codable {
     let speechId: String
-    let scores: [String: Double]?
+    let scores: [String: RubricScore]?
     let qualitativeFeedback: QualitativeFeedback?
+    let feedbackText: String?
+    let sections: [FeedbackSection]?
     let playableMoments: [PlayableMoment]?
     let audioUrl: String?
 
@@ -726,9 +728,9 @@ struct FeedbackContentResponse: Codable {
     //   playable_moments -> playableMoments
     //   audio_url -> audioUrl
     
-    /// Helper to get feedbackText from nested qualitativeFeedback
-    var feedbackText: String {
-        qualitativeFeedback?.feedbackText ?? ""
+    /// Helper to get feedback text from both top-level and nested payloads.
+    var resolvedFeedbackText: String {
+        feedbackText ?? qualitativeFeedback?.feedbackText ?? ""
     }
 }
 
@@ -746,5 +748,60 @@ struct DebateHistoryItem: Codable {
 struct SpeechHistoryItem: Codable {
     let speakerName: String
     let feedbackUrl: String?
-    let scores: [String: Double]?
+    let scores: [String: RubricScore]?
+}
+
+enum RubricScore: Codable, Hashable, CustomStringConvertible {
+    case number(Double)
+    case notApplicable
+    case text(String)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+
+        if let number = try? container.decode(Double.self) {
+            self = .number(number)
+            return
+        }
+
+        if let string = try? container.decode(String.self) {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            let upper = trimmed.uppercased()
+            if upper == "NA" || upper == "N/A" {
+                self = .notApplicable
+                return
+            }
+            if let parsed = Double(trimmed) {
+                self = .number(parsed)
+                return
+            }
+            self = .text(trimmed)
+            return
+        }
+
+        self = .text("")
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .number(let value):
+            try container.encode(value)
+        case .notApplicable:
+            try container.encode("NA")
+        case .text(let value):
+            try container.encode(value)
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .number(let value):
+            return String(format: "%.2f", value)
+        case .notApplicable:
+            return "NA"
+        case .text(let value):
+            return value
+        }
+    }
 }
