@@ -167,31 +167,46 @@ struct PlayableMoment: Identifiable, Codable, Equatable {
     let timestampSeconds: Double
     let endTimestampSeconds: Double?
     let summary: String
-    
+    /// Prescriptive coaching advice for this moment (what to do differently next time)
+    let recommendation: String?
+    /// Coaching category (e.g. incomplete_argument, excellent, strategic_win)
+    let category: String?
+    /// Whether this is a praise or critical moment
+    let severity: String?
+
     enum CodingKeys: String, CodingKey {
         case timestampLabel = "timestamp_label"
         case timestampSeconds = "timestamp_seconds"
         case summary = "issue"
         case endTimestampSeconds = "end_timestamp_seconds"
+        case recommendation = "recommendation"
+        case category = "category"
+        case severity = "severity"
     }
-    
-    init(timestampLabel: String, timestampSeconds: Double, endTimestampSeconds: Double? = nil, summary: String) {
+
+    init(timestampLabel: String, timestampSeconds: Double, endTimestampSeconds: Double? = nil, summary: String, recommendation: String? = nil, category: String? = nil, severity: String? = nil) {
         self.timestampLabel = timestampLabel
         self.timestampSeconds = timestampSeconds
         self.endTimestampSeconds = endTimestampSeconds
         self.summary = summary
+        self.recommendation = recommendation
+        self.category = category
+        self.severity = severity
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let label = try container.decodeIfPresent(String.self, forKey: .timestampLabel) ?? "0:00"
         timestampLabel = label
-        
+
         let startSeconds = try container.decodeIfPresent(Double.self, forKey: .timestampSeconds) ?? 0.0
         timestampSeconds = startSeconds
-        
+
         summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? "Feedback Point"
-        
+        recommendation = try container.decodeIfPresent(String.self, forKey: .recommendation)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+        severity = try container.decodeIfPresent(String.self, forKey: .severity)
+
         // Check for explicit end time from backend
         if let explicitEnd = try container.decodeIfPresent(Double.self, forKey: .endTimestampSeconds) {
             endTimestampSeconds = explicitEnd
@@ -200,13 +215,22 @@ struct PlayableMoment: Identifiable, Codable, Equatable {
             endTimestampSeconds = PlayableMoment.parseEndTime(from: label)
         }
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(timestampLabel, forKey: .timestampLabel)
         try container.encode(timestampSeconds, forKey: .timestampSeconds)
         try container.encode(summary, forKey: .summary)
         try container.encodeIfPresent(endTimestampSeconds, forKey: .endTimestampSeconds)
+        try container.encodeIfPresent(recommendation, forKey: .recommendation)
+        try container.encodeIfPresent(category, forKey: .category)
+        try container.encodeIfPresent(severity, forKey: .severity)
+    }
+
+    /// True if this moment is praise (excellent/strategic_win/proved), false if coaching critique
+    var isPraise: Bool {
+        guard let s = severity else { return false }
+        return s == "praise"
     }
     
     // Helper to parse end time from strings like "0:30-1:00" or "0:30 to 1:00"

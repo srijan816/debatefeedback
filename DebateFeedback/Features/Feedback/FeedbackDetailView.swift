@@ -721,34 +721,124 @@ struct PlayableMomentRow: View {
     let moment: PlayableMoment
     let isActive: Bool
     let playMoment: (PlayableMoment) -> Void
+    @State private var showRecommendation = false
+
+    private var accentColor: Color {
+        moment.isPraise ? Color.green : Constants.Colors.primaryAction
+    }
+
+    private var categoryIcon: String {
+        if moment.isPraise { return "star.fill" }
+        switch moment.category {
+        case "incomplete_argument": return "exclamationmark.triangle"
+        case "dropped_argument": return "xmark.circle"
+        case "excellent", "proved", "strategic_win": return "star.fill"
+        default: return "lightbulb"
+        }
+    }
 
     var body: some View {
-        Button {
-            playMoment(moment)
-        } label: {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(moment.timestampLabel)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                    Text(moment.summary)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                playMoment(moment)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: categoryIcon)
                         .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
+                        .foregroundColor(accentColor)
+                        .frame(width: 16)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(moment.timestampLabel)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(accentColor)
+                        Text(moment.summary)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: isActive ? "pause.fill" : "play.fill")
+                        .font(.title3)
+                        .foregroundColor(accentColor)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(isActive ? accentColor.opacity(0.12) : Color(uiColor: .systemBackground))
+                .cornerRadius(moment.recommendation != nil ? 12 : 12)
+                .cornerRadius(12, corners: moment.recommendation != nil ? [.topLeft, .topRight] : .allCorners)
+            }
+            .buttonStyle(.plain)
+
+            // Recommendation panel — shown when recommendation is available
+            if let rec = moment.recommendation, !rec.isEmpty {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showRecommendation.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showRecommendation ? "chevron.up" : "chevron.down")
+                            .font(.caption2)
+                        Text(showRecommendation ? "Hide advice" : "Show advice")
+                            .font(.caption2)
+                        Spacer()
+                    }
+                    .foregroundColor(accentColor)
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                    .background(accentColor.opacity(0.06))
+                }
+                .buttonStyle(.plain)
+
+                if showRecommendation {
+                    Text(rec)
+                        .font(.caption)
+                        .foregroundColor(.primary)
+                        .padding(.horizontal)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(accentColor.opacity(0.04))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Spacer()
-
-                Image(systemName: isActive ? "pause.fill" : "play.fill")
-                    .font(.title3)
-                    .foregroundColor(Constants.Colors.primaryAction)
+                // Bottom rounded corners
+                Color.clear.frame(height: 0)
+                    .background(Color(uiColor: .systemBackground))
+                    .cornerRadius(12, corners: [.bottomLeft, .bottomRight])
             }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isActive ? Constants.Colors.primaryAction.opacity(0.12) : Color(uiColor: .systemBackground))
-            .cornerRadius(12)
         }
-        .buttonStyle(.plain)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(accentColor.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Corner radius helper
+
+extension View {
+    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+        clipShape(RoundedCorner(radius: radius, corners: corners))
+    }
+}
+
+struct RoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: UIRectCorner = .allCorners
+
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: corners,
+            cornerRadii: CGSize(width: radius, height: radius)
+        )
+        return Path(path.cgPath)
     }
 }
 
