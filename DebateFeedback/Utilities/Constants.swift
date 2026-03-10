@@ -10,7 +10,7 @@ enum Constants {
 
     // MARK: - API Configuration
     enum API {
-        static let baseURL = "https://45-128-222-229.sslip.io/api"
+        static let baseURL = "https://api.genalphai.com/api"
         static let useMockData = false
 
         static let requestTimeout: TimeInterval = 30.0
