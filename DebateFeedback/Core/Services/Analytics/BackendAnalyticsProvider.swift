@@ -145,7 +145,7 @@ class BackendAnalyticsProvider: AnalyticsProvider {
     private func sendEvents(_ events: [AnalyticsEventDTO]) async {
         let request = LogAnalyticsEventRequest(events: events)
 
-        guard let url = URL(string: "\(baseURL)/api/analytics/events") else {
+        guard let url = URL(string: "\(baseURL)/analytics/events") else {
             print("❌ Analytics: Invalid URL")
             return
         }

@@ -28,6 +28,7 @@ struct FeedbackDetailView: View {
     @State private var portfolio: StudentPortfolioResponse?
     @State private var benchmarks: StudentBenchmarksResponse?
     @State private var trainingErrorMessage: String?
+    @State private var comparativeErrorMessage: String?
     @State private var progressErrorMessage: String?
     @State private var isTrainingLoading = false
     @State private var isProgressLoading = false
@@ -80,13 +81,10 @@ struct FeedbackDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    if let urlString = recording.feedbackUrl, URL(string: urlString) != nil {
+                    if let url = resolvedFeedbackDocumentURL {
                         Button {
-                            if let url = URL(string: urlString) {
-                                UIApplication.shared.open(url)
-                                // Track opening feedback in Safari
-                                AnalyticsService.shared.logFeedbackSharedSafari(speakerPosition: recording.speakerPosition)
-                            }
+                            UIApplication.shared.open(url)
+                            AnalyticsService.shared.logFeedbackSharedSafari(speakerPosition: recording.speakerPosition)
                         } label: {
                             Label("Open in Safari", systemImage: "safari")
                         }
@@ -105,8 +103,8 @@ struct FeedbackDetailView: View {
             }
         }
         .sheet(isPresented: $showingShareSheet) {
-            if let url = recording.feedbackUrl {
-                ShareSheet(items: [URL(string: url)!])
+            if let url = resolvedFeedbackDocumentURL {
+                ShareSheet(items: [url])
             }
         }
         .task {
@@ -144,7 +142,7 @@ struct FeedbackDetailView: View {
         if hasProgressAccess {
             modes.append(.progress)
         }
-        if recording.feedbackUrl != nil {
+        if resolvedFeedbackDocumentURL != nil {
             modes.append(.document)
         }
         return modes
@@ -152,7 +150,7 @@ struct FeedbackDetailView: View {
 
     private var documentFeedbackView: some View {
         Group {
-            if let urlString = recording.feedbackUrl, let url = URL(string: urlString) {
+            if let url = resolvedFeedbackDocumentURL {
                 VStack(spacing: 0) {
                     speakerInfoBar
 
@@ -263,6 +261,12 @@ struct FeedbackDetailView: View {
                     }
                     if let analysis = comparativeAnalysis {
                         comparativeAnalysisSection(analysis)
+                    }
+                    if let comparativeErrorMessage {
+                        lightweightErrorCard(
+                            title: "Round Comparison Pending",
+                            message: comparativeErrorMessage
+                        )
                     }
                     if trainingContent?.drill == nil && trainingContent?.ghostDebater == nil && comparativeAnalysis == nil {
                         ContentUnavailableView(
@@ -396,13 +400,10 @@ struct FeedbackDetailView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
 
-            if let urlString = recording.feedbackUrl {
+            if let url = resolvedFeedbackDocumentURL {
                 Button {
-                    if let url = URL(string: urlString) {
-                        UIApplication.shared.open(url)
-                        // Track opening feedback in Safari
-                        AnalyticsService.shared.logFeedbackSharedSafari(speakerPosition: recording.speakerPosition)
-                    }
+                    UIApplication.shared.open(url)
+                    AnalyticsService.shared.logFeedbackSharedSafari(speakerPosition: recording.speakerPosition)
                 } label: {
                     Label("Open Feedback", systemImage: "arrow.up.right.square")
                 }
@@ -907,6 +908,8 @@ struct FeedbackDetailView: View {
         guard let speechId = recording.speechId else { return }
 
         isTrainingLoading = true
+        trainingErrorMessage = nil
+        comparativeErrorMessage = nil
         defer { isTrainingLoading = false }
 
         do {
@@ -914,16 +917,34 @@ struct FeedbackDetailView: View {
                 endpoint: .getSpeechTraining(speechId: speechId, generate: true)
             )
             trainingContent = response
-
-            if let debateId = debateIdForAnalysis {
-                let analysis: ComparativeAnalysisResponse = try await APIClient.shared.request(
-                    endpoint: .getComparativeAnalysis(debateId: debateId, generate: true)
-                )
-                comparativeAnalysis = analysis
-            }
         } catch {
             trainingErrorMessage = error.localizedDescription
         }
+
+        guard let debateId = debateIdForAnalysis else { return }
+
+        do {
+            let analysis: ComparativeAnalysisResponse = try await APIClient.shared.request(
+                endpoint: .getComparativeAnalysis(debateId: debateId, generate: true)
+            )
+            comparativeAnalysis = analysis
+        } catch {
+            comparativeAnalysis = nil
+            comparativeErrorMessage = "Round comparison unlocks after more speeches finish processing."
+        }
+    }
+
+    private var resolvedFeedbackDocumentURL: URL? {
+        if let speechId = recording.speechId, !speechId.isEmpty {
+            let base = Constants.API.baseURL.replacingOccurrences(of: "/api", with: "")
+            return URL(string: "\(base)/feedback/view/\(speechId)")
+        }
+
+        if let urlString = recording.feedbackUrl {
+            return URL(string: urlString)
+        }
+
+        return nil
     }
 
     private func loadProgressData() async {
