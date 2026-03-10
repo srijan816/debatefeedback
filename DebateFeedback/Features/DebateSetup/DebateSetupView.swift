@@ -17,6 +17,8 @@ struct DebateSetupView: View {
     @State private var viewModel = SetupViewModel()
     @FocusState private var isStudentNameFieldFocused: Bool
     @State private var isUnassignedDropTargeted = false
+    @State private var isTimingDetailsExpanded = false
+    @State private var isRosterExpanded = true
 
     var body: some View {
         NavigationStack {
@@ -35,6 +37,8 @@ struct DebateSetupView: View {
                     // Content based on current step
                     ScrollView {
                         VStack(spacing: 24) {
+                            setupSummaryStrip
+
                             switch viewModel.currentStep {
                             case .basicInfo:
                                 basicInfoStep
@@ -166,32 +170,226 @@ struct DebateSetupView: View {
         }
     }
 
-    // MARK: - Basic Info Step
+    private var assignedStudentCount: Int {
+        max(0, viewModel.students.count - viewModel.unassignedStudents().count)
+    }
 
-    private var basicInfoStep: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Basic Information")
+    private var teamReadinessSummary: (icon: String, title: String, detail: String, color: Color) {
+        let unassignedCount = viewModel.unassignedStudents().count
+        let requiredTeamsReady: Bool
+
+        switch viewModel.selectedFormat {
+        case .wsdc, .australs, .ap:
+            requiredTeamsReady = !viewModel.propTeam.isEmpty && !viewModel.oppTeam.isEmpty
+        case .bp:
+            requiredTeamsReady = !viewModel.ogTeam.isEmpty && !viewModel.ooTeam.isEmpty && !viewModel.cgTeam.isEmpty && !viewModel.coTeam.isEmpty
+        }
+
+        if viewModel.students.isEmpty {
+            return ("person.2.slash", "No roster yet", "Add students before assigning teams.", Constants.Colors.warning)
+        }
+
+        if !requiredTeamsReady {
+            return ("square.grid.2x2", "Teams incomplete", "Every side must have at least one speaker.", Constants.Colors.warning)
+        }
+
+        if unassignedCount > 0 {
+            return ("person.crop.circle.badge.exclamationmark", "Assignments pending", "\(unassignedCount) student\(unassignedCount == 1 ? "" : "s") still unassigned.", Constants.Colors.warning)
+        }
+
+        return ("checkmark.circle.fill", "Ready to start", "All teams are filled and the round can begin.", Constants.Colors.complete)
+    }
+
+    private var setupSummaryStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                summaryChip(
+                    title: "Format",
+                    value: viewModel.selectedFormat.displayName,
+                    icon: "rectangle.3.group"
+                )
+
+                summaryChip(
+                    title: "Level",
+                    value: viewModel.studentLevel.displayName,
+                    icon: "graduationcap"
+                )
+
+                summaryChip(
+                    title: "Timing",
+                    value: timingSummary,
+                    icon: "timer"
+                )
+
+                summaryChip(
+                    title: "Roster",
+                    value: "\(assignedStudentCount)/\(viewModel.students.count) assigned",
+                    icon: "person.3"
+                )
+
+                if let className = viewModel.selectedClassDayTime ?? viewModel.selectedClassId {
+                    summaryChip(
+                        title: "Class",
+                        value: className,
+                        icon: "calendar"
+                    )
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .padding(16)
+        .softCard(
+            backgroundColor: Constants.Colors.cardBackground,
+            borderColor: Constants.Colors.textTertiary.opacity(0.18),
+            cornerRadius: 18
+        )
+    }
+
+    private var timingSummary: String {
+        let speech = "\(viewModel.speechTimeSeconds / 60)m speeches"
+        if viewModel.shouldIncludeReplySpeeches, let replyTime = viewModel.replyTimeSeconds {
+            return "\(speech), \(replyTime / 60)m replies"
+        }
+        return speech
+    }
+
+    private func stageHeader(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundColor(Constants.Colors.textPrimary)
 
-            if viewModel.hasScheduleDefaults {
-                scheduleDefaultsBadge
+            Text(subtitle)
+                .font(.subheadline)
+                .foregroundColor(Constants.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func sectionHeader(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(Constants.Colors.textPrimary)
+
+            Text(subtitle)
+                .font(.caption)
+                .foregroundColor(Constants.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func summaryChip(title: String, value: String, icon: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundColor(Constants.Colors.primaryBlue)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(Constants.Colors.textSecondary)
+                Text(value)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Constants.Colors.textPrimary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Constants.Colors.backgroundSecondary)
+        .cornerRadius(14)
+    }
+
+    private func durationEditor(
+        title: String,
+        valueLabel: String,
+        helperText: String,
+        accentGradient: LinearGradient,
+        onDecrease: @escaping () -> Void,
+        onIncrease: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+                    Text(helperText)
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+
+                Spacer()
+
+                Text(valueLabel)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(accentGradient)
             }
 
-            if let notice = viewModel.scheduleNotice {
-                scheduleNoticeView(notice)
-            }
+            HStack(spacing: 16) {
+                Button(action: onDecrease) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(accentGradient)
+                }
 
-            if viewModel.selectedClassId != nil || !viewModel.availableAlternatives.isEmpty {
-                classSelectionSection
+                Button(action: onIncrease) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(accentGradient)
+                }
+            }
+        }
+        .padding(14)
+        .background(Constants.Colors.backgroundSecondary)
+        .cornerRadius(16)
+    }
+
+    // MARK: - Basic Info Step
+
+    private var basicInfoStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            stageHeader(
+                title: "Shape the round",
+                subtitle: "Lock the motion, format, and schedule context before you place speakers."
+            )
+
+            if viewModel.selectedClassId != nil || !viewModel.availableAlternatives.isEmpty || viewModel.hasScheduleDefaults || viewModel.scheduleNotice != nil {
+                VStack(alignment: .leading, spacing: 14) {
+                    sectionHeader("Session Source", subtitle: "Use your schedule to prefill the room and timing defaults.")
+
+                    if viewModel.hasScheduleDefaults {
+                        scheduleDefaultsBadge
+                    }
+
+                    if let notice = viewModel.scheduleNotice {
+                        scheduleNoticeView(notice)
+                    }
+
+                    if viewModel.selectedClassId != nil || !viewModel.availableAlternatives.isEmpty {
+                        classSelectionSection
+                    }
+                }
+                .padding(18)
+                .softCard(
+                    backgroundColor: Constants.Colors.cardBackground,
+                    borderColor: Constants.Colors.textTertiary.opacity(0.2),
+                    cornerRadius: 18
+                )
             }
 
             VStack(alignment: .leading, spacing: 12) {
+                sectionHeader("Motion", subtitle: "Keep it crisp enough for students to understand immediately.")
+
                 HStack {
-                    Text("Motion")
-                        .font(.headline)
-                        .foregroundColor(Constants.Colors.textSecondary)
+                    Text("Debate motion")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Constants.Colors.textPrimary)
                     Spacer()
                     Text("\(viewModel.motionCharCount)/200")
                         .font(.caption2)
@@ -202,9 +400,9 @@ struct DebateSetupView: View {
                     .padding()
                     .background(Constants.Colors.backgroundSecondary)
                     .foregroundColor(Constants.Colors.textPrimary)
-                    .cornerRadius(12)
+                    .cornerRadius(14)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 14)
                             .stroke(viewModel.motionBorderColor, lineWidth: 1.5)
                     )
                     .lineLimit(2...4)
@@ -222,134 +420,145 @@ struct DebateSetupView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
+            .padding(18)
+            .softCard(
+                backgroundColor: Constants.Colors.cardBackground,
+                borderColor: Constants.Colors.textTertiary.opacity(0.2),
+                cornerRadius: 18
+            )
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Format")
-                    .font(.headline)
-                    .foregroundColor(Constants.Colors.textSecondary)
-
-                Picker("Debate Format", selection: Binding(
-                    get: { viewModel.selectedFormat },
-                    set: { newValue in
-                        viewModel.selectedFormat = newValue
-                        viewModel.updateTimeDefaults()
-                    }
-                )) {
-                    ForEach(DebateFormat.allCases, id: \.self) { format in
-                        Text(format.displayName).tag(format)
-                    }
-                }
-                .pickerStyle(.menu)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Constants.Colors.backgroundSecondary)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Constants.Colors.textTertiary.opacity(0.3), lineWidth: 1)
-                )
-            }
-
-
-
-            // Time Settings Card
             VStack(alignment: .leading, spacing: 16) {
-                Text("Time Settings")
-                    .font(.headline)
-                    .foregroundColor(Constants.Colors.textSecondary)
+                sectionHeader("Round Configuration", subtitle: "Choose the room structure and the student level you want feedback calibrated for.")
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Format")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+
+                    Picker("Debate Format", selection: Binding(
+                        get: { viewModel.selectedFormat },
+                        set: { newValue in
+                            viewModel.selectedFormat = newValue
+                            viewModel.updateTimeDefaults()
+                        }
+                    )) {
+                        ForEach(DebateFormat.allCases, id: \.self) { format in
+                            Text(format.displayName).tag(format)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Constants.Colors.backgroundSecondary)
+                    .cornerRadius(14)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Constants.Colors.textTertiary.opacity(0.3), lineWidth: 1)
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Student level")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+
+                    Picker("Student level", selection: $viewModel.studentLevel) {
+                        ForEach(StudentLevel.allCases, id: \.self) { level in
+                            Text(level.displayName).tag(level)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .padding(18)
+            .softCard(
+                backgroundColor: Constants.Colors.cardBackground,
+                borderColor: Constants.Colors.textTertiary.opacity(0.2),
+                cornerRadius: 18
+            )
+
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader("Timing", subtitle: "Set the main speaking block first, then expand reply settings only if you need them.")
+
+                durationEditor(
+                    title: "Main speeches",
+                    valueLabel: "\(viewModel.speechTimeSeconds / 60) min",
+                    helperText: "Per main speech",
+                    accentGradient: Constants.Gradients.primaryButton,
+                    onDecrease: {
+                        if viewModel.speechTimeSeconds > 60 {
+                            viewModel.speechTimeSeconds -= 60
+                        }
+                    },
+                    onIncrease: {
+                        if viewModel.speechTimeSeconds < 900 {
+                            viewModel.speechTimeSeconds += 60
+                        }
+                    }
+                )
 
                 if viewModel.selectedFormat.hasReplySpeeches {
-                    Toggle(
-                        "Include reply speeches",
-                        isOn: Binding(
-                            get: { viewModel.includeReplySpeeches },
-                            set: { viewModel.setReplySpeechesEnabled($0) }
-                        )
-                    )
-                    .toggleStyle(SwitchToggleStyle(tint: Constants.Colors.primaryBlue))
-                    .foregroundColor(Constants.Colors.textPrimary)
-                }
+                    DisclosureGroup(isExpanded: $isTimingDetailsExpanded) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Toggle(
+                                "Include reply speeches",
+                                isOn: Binding(
+                                    get: { viewModel.includeReplySpeeches },
+                                    set: { viewModel.setReplySpeechesEnabled($0) }
+                                )
+                            )
+                            .toggleStyle(SwitchToggleStyle(tint: Constants.Colors.primaryBlue))
+                            .foregroundColor(Constants.Colors.textPrimary)
 
-                HStack(spacing: 20) {
-                    VStack(spacing: 8) {
-                        Text("Speech Time")
-                            .font(.caption)
-                            .foregroundColor(Constants.Colors.textSecondary)
-                        Text("\(viewModel.speechTimeSeconds / 60)")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .foregroundStyle(Constants.Gradients.primaryButton)
-                        Text("min")
-                            .font(.caption)
-                            .foregroundColor(Constants.Colors.textSecondary)
-
-                        HStack(spacing: 16) {
-                            Button {
-                                if viewModel.speechTimeSeconds > 60 {
-                                    viewModel.speechTimeSeconds -= 60
-                                }
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(Constants.Gradients.primaryButton)
-                            }
-
-                            Button {
-                                if viewModel.speechTimeSeconds < 900 {
-                                    viewModel.speechTimeSeconds += 60
-                                }
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(Constants.Gradients.primaryButton)
+                            if viewModel.includeReplySpeeches,
+                               let replyTime = viewModel.replyTimeSeconds {
+                                durationEditor(
+                                    title: "Reply speeches",
+                                    valueLabel: "\(replyTime / 60) min",
+                                    helperText: "Per reply speech",
+                                    accentGradient: Constants.Gradients.secondaryButton,
+                                    onDecrease: {
+                                        if replyTime > 60 {
+                                            viewModel.replyTimeSeconds = replyTime - 30
+                                        }
+                                    },
+                                    onIncrease: {
+                                        if replyTime < 300 {
+                                            viewModel.replyTimeSeconds = replyTime + 30
+                                        }
+                                    }
+                                )
                             }
                         }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .glassmorphism(borderColor: Constants.Colors.softCyan)
-
-                    if viewModel.selectedFormat.hasReplySpeeches,
-                       viewModel.includeReplySpeeches,
-                       let replyTime = viewModel.replyTimeSeconds {
-                        VStack(spacing: 8) {
-                            Text("Reply Time")
-                                .font(.caption)
-                                .foregroundColor(Constants.Colors.textSecondary)
-                            Text("\(replyTime / 60)")
-                                .font(.system(size: 36, weight: .bold, design: .rounded))
-                                .foregroundStyle(Constants.Gradients.secondaryButton)
-                            Text("min")
-                                .font(.caption)
-                                .foregroundColor(Constants.Colors.textSecondary)
-
-                            HStack(spacing: 16) {
-                                Button {
-                                    if replyTime > 60 {
-                                        viewModel.replyTimeSeconds = replyTime - 30
-                                    }
-                                } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(Constants.Gradients.secondaryButton)
-                                }
-
-                                Button {
-                                    if replyTime < 300 {
-                                        viewModel.replyTimeSeconds = replyTime + 30
-                                    }
-                                } label: {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(Constants.Gradients.secondaryButton)
-                                }
+                        .padding(.top, 12)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Reply settings")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(Constants.Colors.textPrimary)
+                                Text(viewModel.shouldIncludeReplySpeeches ? "Enabled" : "Hidden")
+                                    .font(.caption)
+                                    .foregroundColor(Constants.Colors.textSecondary)
                             }
+                            Spacer()
+                            Text(viewModel.selectedFormat.defaultReplyTime.map { "\($0 / 60) min default" } ?? "Optional")
+                                .font(.caption)
+                                .foregroundColor(Constants.Colors.textSecondary)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .glassmorphism(borderColor: Constants.Colors.softPink)
                     }
+                    .tint(Constants.Colors.textPrimary)
                 }
             }
+            .padding(18)
+            .softCard(
+                backgroundColor: Constants.Colors.cardBackground,
+                borderColor: Constants.Colors.textTertiary.opacity(0.2),
+                cornerRadius: 18
+            )
         }
     }
 
@@ -469,12 +678,6 @@ struct DebateSetupView: View {
                 }
             }
         }
-        .padding()
-        .softCard(
-            backgroundColor: Constants.Colors.cardBackground,
-            borderColor: Constants.Colors.textTertiary.opacity(0.2),
-            cornerRadius: 16
-        )
     }
 
     private func alternativeButton(for alternative: ScheduleAlternative) -> some View {
@@ -562,13 +765,45 @@ struct DebateSetupView: View {
 
     private var teamAssignmentStep: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Add Students & Drag to Assign")
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(Constants.Colors.textPrimary)
+            stageHeader(
+                title: "Build the room",
+                subtitle: "Add your roster, place speakers into positions, and make sure every side is covered."
+            )
 
-            // MARK: - Add Student Section (Prominent)
             VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: teamReadinessSummary.icon)
+                        .font(.title3)
+                        .foregroundColor(teamReadinessSummary.color)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(teamReadinessSummary.title)
+                            .font(.headline)
+                            .foregroundColor(Constants.Colors.textPrimary)
+                        Text(teamReadinessSummary.detail)
+                            .font(.subheadline)
+                            .foregroundColor(Constants.Colors.textSecondary)
+                    }
+
+                    Spacer()
+                }
+
+                HStack(spacing: 10) {
+                    summaryChip(title: "Students", value: "\(viewModel.students.count)", icon: "person.3")
+                    summaryChip(title: "Assigned", value: "\(assignedStudentCount)", icon: "checkmark.circle")
+                    summaryChip(title: "Unassigned", value: "\(viewModel.unassignedStudents().count)", icon: "tray")
+                }
+            }
+            .padding(18)
+            .softCard(
+                backgroundColor: Constants.Colors.cardBackground,
+                borderColor: teamReadinessSummary.color.opacity(0.25),
+                cornerRadius: 18
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
+                sectionHeader("Roster", subtitle: "Drop names in quickly, then let the assignment canvas do the rest.")
+
                 HStack(spacing: 12) {
                     TextField("Enter student name", text: $viewModel.newStudentName)
                         .textContentType(.name)
@@ -577,16 +812,16 @@ struct DebateSetupView: View {
                         .onSubmit {
                             if viewModel.isStudentNameValid {
                                 viewModel.addStudent()
-                                isStudentNameFieldFocused = false // Dismiss keyboard
+                                isStudentNameFieldFocused = false
                             }
                         }
                         .submitLabel(.done)
                         .padding()
                         .background(Constants.Colors.backgroundSecondary)
                         .foregroundColor(Constants.Colors.textPrimary)
-                        .cornerRadius(12)
+                        .cornerRadius(14)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: 14)
                                 .stroke(
                                     viewModel.newStudentName.isEmpty
                                         ? Constants.Colors.softCyan.opacity(0.3)
@@ -608,7 +843,7 @@ struct DebateSetupView: View {
                     Button(action: {
                         HapticManager.shared.medium()
                         viewModel.addStudent()
-                        isStudentNameFieldFocused = false // Dismiss keyboard after adding
+                        isStudentNameFieldFocused = false
                     }) {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 36))
@@ -630,20 +865,62 @@ struct DebateSetupView: View {
                     .foregroundColor(Constants.Colors.failed)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
+
+                HStack(spacing: 12) {
+                    Button("Auto-fill teams") {
+                        viewModel.autoAssignStudents()
+                    }
+                    .gradientButtonStyle(isEnabled: !viewModel.students.isEmpty)
+                    .disabled(viewModel.students.isEmpty)
+
+                    Button("Clear assignments") {
+                        viewModel.clearAssignments()
+                    }
+                    .foregroundColor(Constants.Colors.textPrimary)
+                    .frame(height: Constants.Sizing.minimumTapTarget)
+                    .padding(.horizontal, 18)
+                    .background(Constants.Colors.backgroundSecondary)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Constants.Colors.textTertiary.opacity(0.3), lineWidth: 1)
+                    )
+                    .disabled(viewModel.students.isEmpty)
+                    .opacity(viewModel.students.isEmpty ? 0.5 : 1.0)
+                }
             }
-            .padding()
-            .glassmorphism(borderColor: Constants.Colors.softCyan)
+            .padding(18)
+            .softCard(
+                backgroundColor: Constants.Colors.cardBackground,
+                borderColor: Constants.Colors.textTertiary.opacity(0.2),
+                cornerRadius: 18
+            )
 
-            unassignedStudentsPanel
+            DisclosureGroup(isExpanded: $isRosterExpanded) {
+                unassignedStudentsPanel
+                    .padding(.top, 12)
+            } label: {
+                sectionHeader("Unassigned tray", subtitle: "Drag students from here into a team slot, or back here to remove them from a side.")
+            }
+            .padding(18)
+            .softCard(
+                backgroundColor: Constants.Colors.cardBackground,
+                borderColor: Constants.Colors.textTertiary.opacity(0.2),
+                cornerRadius: 18
+            )
+            .tint(Constants.Colors.textPrimary)
 
-            // MARK: - Teams based on format
-            switch viewModel.selectedFormat {
-            case .wsdc, .australs:
-                twoTeamLayout
-            case .bp:
-                britishParliamentaryLayout
-            case .ap:
-                asianParliamentaryLayout
+            VStack(alignment: .leading, spacing: 14) {
+                sectionHeader("Assignment Canvas", subtitle: "Team order controls speech order. Drag within a team to reorder.")
+
+                switch viewModel.selectedFormat {
+                case .wsdc, .australs:
+                    twoTeamLayout
+                case .bp:
+                    britishParliamentaryLayout
+                case .ap:
+                    asianParliamentaryLayout
+                }
             }
 
             if viewModel.selectedFormat.hasReplySpeeches && viewModel.shouldIncludeReplySpeeches {

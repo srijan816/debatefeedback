@@ -417,6 +417,46 @@ final class SetupViewModel {
         assignToTeam(student, team: team, position: nil)
     }
 
+    func clearAssignments() {
+        propTeam.removeAll()
+        oppTeam.removeAll()
+        ogTeam.removeAll()
+        ooTeam.removeAll()
+        cgTeam.removeAll()
+        coTeam.removeAll()
+        syncReplySpeakerSelections()
+    }
+
+    func autoAssignStudents() {
+        clearAssignments()
+
+        let teamOrder: [TeamType]
+        switch selectedFormat.teamStructure {
+        case .propOpp, .asianParliamentary:
+            teamOrder = [.prop, .opp]
+        case .britishParliamentary:
+            teamOrder = [.og, .oo, .cg, .co]
+        }
+
+        guard !teamOrder.isEmpty else { return }
+
+        var teamIndex = 0
+        for student in students {
+            var attempts = 0
+            while attempts < teamOrder.count {
+                let team = teamOrder[teamIndex % teamOrder.count]
+                if teamStudents(for: team).count < maxSlots(for: team) {
+                    assignToTeam(student, team: team)
+                    teamIndex += 1
+                    break
+                }
+
+                teamIndex += 1
+                attempts += 1
+            }
+        }
+    }
+
     func assignToTeam(_ student: Student, team: TeamType, position: Int?) {
         let maxSlots = maxSlots(for: team)
         let targetIndex = max(0, (position ?? maxSlots) - 1)
