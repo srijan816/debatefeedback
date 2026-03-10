@@ -13,7 +13,15 @@ enum Endpoint {
     case uploadSpeech
     case getSpeechStatus(speechId: String)
     case getFeedbackContent(speechId: String)
+    case getSpeechTraining(speechId: String, generate: Bool)
+    case getComparativeAnalysis(debateId: String, generate: Bool)
+    case getStudentPortfolio(teacherName: String, studentName: String, limit: Int)
+    case getStudentBenchmarks(teacherName: String, studentName: String, cohortLimit: Int)
     case getDebateHistory(teacherId: String, limit: Int)
+
+    private func encodedPathComponent(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
+    }
 
     var path: String {
         switch self {
@@ -33,6 +41,14 @@ enum Endpoint {
             return "/speeches/\(speechId)"
         case .getFeedbackContent(let speechId):
             return "/speeches/\(speechId)/feedback"
+        case .getSpeechTraining(let speechId, let generate):
+            return "/speeches/\(speechId)/training?generate=\(generate ? "true" : "false")"
+        case .getComparativeAnalysis(let debateId, let generate):
+            return "/debates/\(debateId)/comparative-analysis?generate=\(generate ? "true" : "false")"
+        case .getStudentPortfolio(let teacherName, let studentName, let limit):
+            return "/teachers/\(encodedPathComponent(teacherName))/students/\(encodedPathComponent(studentName))/portfolio?limit=\(limit)"
+        case .getStudentBenchmarks(let teacherName, let studentName, let cohortLimit):
+            return "/teachers/\(encodedPathComponent(teacherName))/students/\(encodedPathComponent(studentName))/benchmarks?cohort_limit=\(cohortLimit)"
         case .getDebateHistory(let teacherId, let limit):
             return "/teachers/\(teacherId)/debates?limit=\(limit)"
         }
@@ -42,7 +58,7 @@ enum Endpoint {
         switch self {
         case .login, .createDebate, .uploadSpeech:
             return .post
-        case .getCurrentSchedule, .getSpeechStatus, .getFeedbackContent, .getDebateHistory:
+        case .getCurrentSchedule, .getSpeechStatus, .getFeedbackContent, .getSpeechTraining, .getComparativeAnalysis, .getStudentPortfolio, .getStudentBenchmarks, .getDebateHistory:
             return .get
         }
     }

@@ -10,6 +10,7 @@ import WebKit
 struct FeedbackDetailView: View {
     let recording: SpeechRecording
 
+    @Environment(AppCoordinator.self) private var coordinator
     @State private var feedbackContent: String = ""
     @State private var sections: [FeedbackSectionData] = []
     @State private var isLoading = true
@@ -22,6 +23,14 @@ struct FeedbackDetailView: View {
     @State private var playbackErrorMessage: String?
     @State private var displayMode: FeedbackDisplayMode
     @State private var remoteAudioUrl: URL?
+    @State private var trainingContent: SpeechTrainingResponse?
+    @State private var comparativeAnalysis: ComparativeAnalysisResponse?
+    @State private var portfolio: StudentPortfolioResponse?
+    @State private var benchmarks: StudentBenchmarksResponse?
+    @State private var trainingErrorMessage: String?
+    @State private var progressErrorMessage: String?
+    @State private var isTrainingLoading = false
+    @State private var isProgressLoading = false
 
     init(recording: SpeechRecording) {
         self.recording = recording
@@ -59,6 +68,10 @@ struct FeedbackDetailView: View {
                     documentFeedbackView
                 case .highlights:
                     highlightsFeedbackView
+                case .training:
+                    trainingConsoleView
+                case .progress:
+                    progressConsoleView
                 }
             }
         }
@@ -97,7 +110,7 @@ struct FeedbackDetailView: View {
             }
         }
         .task {
-            await loadFeedback()
+            await loadAllContent()
         }
         .onAppear {
             // Track feedback detail viewed
@@ -127,10 +140,14 @@ struct FeedbackDetailView: View {
     }
 
     private var availableDisplayModes: [FeedbackDisplayMode] {
-        if recording.feedbackUrl == nil {
-            return [.highlights]
+        var modes: [FeedbackDisplayMode] = [.highlights, .training]
+        if hasProgressAccess {
+            modes.append(.progress)
         }
-        return [.highlights, .document]
+        if recording.feedbackUrl != nil {
+            modes.append(.document)
+        }
+        return modes
     }
 
     private var documentFeedbackView: some View {
@@ -218,6 +235,75 @@ struct FeedbackDetailView: View {
                     errorView(error)
                 } else {
                     feedbackContentView
+                }
+            }
+            .padding()
+        }
+    }
+
+    private var trainingConsoleView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                speakerHeader
+
+                if isTrainingLoading {
+                    contentLoadingView("Building training tools...")
+                } else if let trainingErrorMessage {
+                    lightweightErrorCard(
+                        title: "Training Tools Unavailable",
+                        message: trainingErrorMessage
+                    )
+                } else {
+                    trainingSummarySection
+                    if let drill = trainingContent?.drill {
+                        trainingDrillSection(drill)
+                    }
+                    if let ghost = trainingContent?.ghostDebater {
+                        ghostDebaterSection(ghost)
+                    }
+                    if let analysis = comparativeAnalysis {
+                        comparativeAnalysisSection(analysis)
+                    }
+                    if trainingContent?.drill == nil && trainingContent?.ghostDebater == nil && comparativeAnalysis == nil {
+                        ContentUnavailableView(
+                            "Training Tools Not Ready",
+                            systemImage: "brain.head.profile",
+                            description: Text("Open this speech again once AI feedback has completed.")
+                        )
+                    }
+                }
+            }
+            .padding()
+        }
+    }
+
+    private var progressConsoleView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                speakerHeader
+
+                if isProgressLoading {
+                    contentLoadingView("Loading progress snapshot...")
+                } else if let progressErrorMessage {
+                    lightweightErrorCard(
+                        title: "Progress Snapshot Unavailable",
+                        message: progressErrorMessage
+                    )
+                } else {
+                    progressOverviewSection
+                    if let benchmarks {
+                        benchmarksSection(benchmarks)
+                    }
+                    if let portfolio {
+                        portfolioSection(portfolio)
+                    }
+                    if portfolio == nil && benchmarks == nil {
+                        ContentUnavailableView(
+                            "No Progress Data Yet",
+                            systemImage: "chart.line.uptrend.xyaxis",
+                            description: Text("Progress insights appear once this student has multiple speeches in the system.")
+                        )
+                    }
                 }
             }
             .padding()
@@ -435,7 +521,316 @@ struct FeedbackDetailView: View {
         }
     }
 
+    private var teacherRouteName: String? {
+        if let current = coordinator.currentTeacher?.name, !current.isEmpty {
+            return current
+        }
+        if let sessionTeacher = recording.debateSession?.teacher?.name, !sessionTeacher.isEmpty {
+            return sessionTeacher
+        }
+        return nil
+    }
+
+    private var hasProgressAccess: Bool {
+        teacherRouteName != nil
+    }
+
+    private var debateIdForAnalysis: String? {
+        recording.debateSession?.backendDebateId
+    }
+
+    private func contentLoadingView(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            ProgressView()
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private func lightweightErrorCard(title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: "exclamationmark.triangle")
+                .font(.headline)
+                .foregroundColor(.orange)
+
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private var trainingSummarySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Training Summary")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(Constants.Colors.primaryAction)
+
+            if let summary = trainingContent?.summary {
+                HStack(spacing: 12) {
+                    summaryMetricCard(title: "Avg Score", value: summary.averageScore.map { String(format: "%.2f", $0) } ?? "NA")
+                    summaryMetricCard(title: "Weakest", value: summary.weakestRubric ?? "NA")
+                    summaryMetricCard(title: "WPM", value: summary.speakingRateWpm.map { String(format: "%.0f", $0) } ?? "NA")
+                }
+
+                if let focus = summary.improvementFocus, !focus.isEmpty {
+                    Text(focus)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text("Training artifacts will appear here once this speech has feedback.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private func summaryMetricCard(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.headline)
+                .foregroundColor(Constants.Colors.primaryAction)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(uiColor: .systemBackground))
+        .cornerRadius(10)
+    }
+
+    private func trainingDrillSection(_ drill: PracticeDrill) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("2-Minute Drill", systemImage: "figure.mind.and.body")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(Constants.Colors.primaryAction)
+
+            Text(drill.title)
+                .font(.headline)
+
+            Text(drill.goal)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            bulletSection(title: "Steps", items: drill.steps)
+            bulletSection(title: "Self-Check", items: drill.selfCheck)
+
+            if let coachNote = drill.coachNote, !coachNote.isEmpty {
+                Text(coachNote)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private func ghostDebaterSection(_ ghost: GhostDebaterArtifact) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Ghost Debater", systemImage: "person.2.wave.2")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(Constants.Colors.primaryAction)
+
+            Text(ghost.strategicBrief)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            if !ghost.counterplayTargets.isEmpty {
+                bulletSection(title: "Counterplay Targets", items: ghost.counterplayTargets)
+            }
+
+            Text(ghost.speechText)
+                .font(.body)
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private func comparativeAnalysisSection(_ analysis: ComparativeAnalysisResponse) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Round Verdict", systemImage: "scale.3d")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(Constants.Colors.primaryAction)
+
+            Text("\(analysis.debateSummary.overallWinner) by \(analysis.debateSummary.margin)")
+                .font(.headline)
+
+            Text(analysis.debateSummary.keyReason)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            if !analysis.clashes.isEmpty {
+                ForEach(analysis.clashes.prefix(3)) { clash in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Clash \(clash.number): \(clash.label)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Text(clash.reason)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("To flip it: \(clash.losingSideNeeded)")
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(uiColor: .systemBackground))
+                    .cornerRadius(10)
+                }
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private var progressOverviewSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Progress Snapshot", systemImage: "chart.line.uptrend.xyaxis")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(Constants.Colors.primaryAction)
+
+            if let benchmarks {
+                HStack(spacing: 12) {
+                    summaryMetricCard(title: "Speeches", value: "\(benchmarks.totals.speeches)")
+                    summaryMetricCard(title: "Rubric Delta", value: formatDelta(benchmarks.rubricScore.delta))
+                    summaryMetricCard(title: "WPM Delta", value: formatDelta(benchmarks.speakingRateWpm.delta))
+                }
+            } else {
+                Text("Benchmark data is still accumulating.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private func benchmarksSection(_ response: StudentBenchmarksResponse) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Benchmarks")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(Constants.Colors.primaryAction)
+
+            benchmarkRow(title: "Speaking Rate", delta: response.speakingRateWpm)
+            benchmarkRow(title: "Speech Duration", delta: response.durationSeconds)
+            benchmarkRow(title: "Rubric Average", delta: response.rubricScore)
+
+            if !response.limitations.isEmpty {
+                bulletSection(title: "Current Limits", items: response.limitations)
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private func benchmarkRow(title: String, delta: BenchmarkDelta) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text("Student: \(formattedMetric(delta.studentAvg)) | Cohort: \(formattedMetric(delta.cohortAvg)) | Delta: \(formatDelta(delta.delta))")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(uiColor: .systemBackground))
+        .cornerRadius(10)
+    }
+
+    private func portfolioSection(_ response: StudentPortfolioResponse) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Rubric Trends")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(Constants.Colors.primaryAction)
+
+            ForEach(response.rubrics.prefix(5)) { rubric in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(rubric.rubric)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("Average: \(formattedMetric(rubric.averageScore)) | Latest: \(formattedMetric(rubric.latestScore)) | Trend: \(formatDelta(rubric.trendDelta))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(Color(uiColor: .systemBackground))
+                .cornerRadius(10)
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private func bulletSection(title: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func formattedMetric(_ value: Double?) -> String {
+        guard let value else { return "NA" }
+        if abs(value.rounded() - value) < 0.01 {
+            return String(format: "%.0f", value)
+        }
+        return String(format: "%.2f", value)
+    }
+
+    private func formatDelta(_ value: Double?) -> String {
+        guard let value else { return "NA" }
+        return value >= 0 ? String(format: "+%.2f", value) : String(format: "%.2f", value)
+    }
+
     // MARK: - Load Feedback
+
+    private func loadAllContent() async {
+        await loadFeedback()
+
+        async let trainingTask: Void = loadTrainingArtifacts()
+        async let progressTask: Void = loadProgressData()
+
+        _ = await (trainingTask, progressTask)
+    }
 
     private func loadFeedback() async {
         if isLoading == false && !sections.isEmpty {
@@ -505,6 +900,59 @@ struct FeedbackDetailView: View {
             print("❌ loadFeedback FAILED: \(error.localizedDescription)")
             errorMessage = "Feedback is ready in the web viewer. Tap the menu to open it."
             isLoading = false
+        }
+    }
+
+    private func loadTrainingArtifacts() async {
+        guard let speechId = recording.speechId else { return }
+
+        isTrainingLoading = true
+        defer { isTrainingLoading = false }
+
+        do {
+            let response: SpeechTrainingResponse = try await APIClient.shared.request(
+                endpoint: .getSpeechTraining(speechId: speechId, generate: true)
+            )
+            trainingContent = response
+
+            if let debateId = debateIdForAnalysis {
+                let analysis: ComparativeAnalysisResponse = try await APIClient.shared.request(
+                    endpoint: .getComparativeAnalysis(debateId: debateId, generate: true)
+                )
+                comparativeAnalysis = analysis
+            }
+        } catch {
+            trainingErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadProgressData() async {
+        guard let teacherName = teacherRouteName else { return }
+
+        isProgressLoading = true
+        defer { isProgressLoading = false }
+
+        do {
+            async let portfolioRequest: StudentPortfolioResponse = APIClient.shared.request(
+                endpoint: .getStudentPortfolio(
+                    teacherName: teacherName,
+                    studentName: recording.speakerName,
+                    limit: 12
+                )
+            )
+
+            async let benchmarksRequest: StudentBenchmarksResponse = APIClient.shared.request(
+                endpoint: .getStudentBenchmarks(
+                    teacherName: teacherName,
+                    studentName: recording.speakerName,
+                    cohortLimit: 200
+                )
+            )
+
+            portfolio = try await portfolioRequest
+            benchmarks = try await benchmarksRequest
+        } catch {
+            progressErrorMessage = error.localizedDescription
         }
     }
 
@@ -874,6 +1322,8 @@ struct FeedbackModeTab: View {
 
 enum FeedbackDisplayMode: String, Identifiable, CaseIterable {
     case highlights = "Highlights"
+    case training = "Training"
+    case progress = "Progress"
     case document = "Document"
 
     var id: String { rawValue }
@@ -973,6 +1423,7 @@ struct WebView: UIViewRepresentable {
 }
 
 #Preview {
+    let coordinator = AppCoordinator()
     let recording = SpeechRecording(
         speakerName: "Alice Smith",
         speakerPosition: "Prop 1",
@@ -988,4 +1439,5 @@ struct WebView: UIViewRepresentable {
     return NavigationStack {
         FeedbackDetailView(recording: recording)
     }
+    .environment(coordinator)
 }

@@ -399,6 +399,94 @@ actor APIClient {
             let response = DebateHistoryResponse(debates: [])
             return response as! T
 
+        case .getSpeechTraining:
+            let response = SpeechTrainingResponse(
+                speechId: "mock-speech",
+                studentName: "Mock Student",
+                studentLevel: "secondary",
+                motion: "This house would regulate social media algorithms",
+                position: "Prop 1",
+                debateFormat: "WSDC",
+                summary: SpeechTrainingSummary(
+                    averageScore: 2.9,
+                    strongestRubric: "Delivery & Style",
+                    weakestRubric: "Argument Completeness",
+                    speakingRateWpm: 156,
+                    improvementFocus: "Argument Completeness: the mechanism was asserted but not explained."
+                ),
+                drill: PracticeDrill(
+                    title: "Mechanism Drill",
+                    focusArea: "Argument Completeness",
+                    focusScore: 2,
+                    weaknessSummary: "The speech states the outcome but does not show the chain of causation.",
+                    goal: "Practice adding the missing middle step between claim and impact.",
+                    steps: ["State the claim in one sentence", "Add the causal chain in two sentences", "Finish with one comparative impact sentence"],
+                    selfCheck: ["Did I explain why the outcome happens?", "Did I compare why my side matters more?"],
+                    coachNote: "Keep it short and mechanistic."
+                ),
+                ghostDebater: GhostDebaterArtifact(
+                    strategicBrief: "Attack the student’s missing mechanisms and out-weigh on probability.",
+                    speechText: "Your case assumes platforms automatically suppress dissent, but that only follows if the regulation is badly designed...",
+                    counterplayTargets: ["Missing mechanism", "Weak weighing", "No trade-off analysis"]
+                )
+            )
+            return response as! T
+
+        case .getComparativeAnalysis:
+            let response = ComparativeAnalysisResponse(
+                debateId: "mock-debate",
+                motion: "This house would regulate social media algorithms",
+                format: "WSDC",
+                studentLevel: "secondary",
+                debateSummary: ComparativeDebateSummary(
+                    motion: "This house would regulate social media algorithms",
+                    overallWinner: "Proposition",
+                    margin: "narrow",
+                    keyReason: "Proposition better explained the democratic harms and won the weighing on long-term institutional trust."
+                ),
+                clashes: [
+                    ComparativeClash(
+                        number: 1,
+                        label: "Democracy vs platform efficiency",
+                        propPosition: "Algorithms distort public discourse.",
+                        oppPosition: "Private ordering delivers better user outcomes.",
+                        winner: "Proposition",
+                        reason: "Opposition never answered why efficiency outweighs democratic legitimacy.",
+                        losingSideNeeded: "Show why targeted platform flexibility solves harms better than state regulation."
+                    )
+                ],
+                burdenAnalysis: ComparativeBurdenAnalysis.empty,
+                weighing: ComparativeWeighing.empty,
+                speakerRankings: [],
+                teamFeedback: ComparativeTeamFeedback.empty
+            )
+            return response as! T
+
+        case .getStudentPortfolio:
+            let response = StudentPortfolioResponse(
+                studentName: "Mock Student",
+                studentLevel: "secondary",
+                totalSpeeches: 4,
+                totalDebates: 2,
+                lastActivityAt: nil,
+                rubrics: [],
+                recentFeedback: []
+            )
+            return response as! T
+
+        case .getStudentBenchmarks:
+            let response = StudentBenchmarksResponse(
+                studentName: "Mock Student",
+                studentLevel: "secondary",
+                totals: BenchmarksTotals(speeches: 4, debates: 2),
+                speakingRateWpm: BenchmarkDelta(studentAvg: 156, cohortAvg: 149, delta: 7),
+                durationSeconds: BenchmarkDelta(studentAvg: 290, cohortAvg: 300, delta: -10),
+                rubricScore: BenchmarkDelta(studentAvg: 2.9, cohortAvg: 3.2, delta: -0.3),
+                latestSpeech: nil,
+                limitations: []
+            )
+            return response as! T
+
         default:
             throw NetworkError.unknown(NSError(domain: "Mock not implemented", code: -1))
         }
@@ -653,6 +741,7 @@ struct CreateDebateRequest: Codable {
     let format: String
     let studentLevel: String
     let speechTimeSeconds: Int
+    let replyTimeSeconds: Int?
     let teams: TeamsData
     let classId: String?
     let scheduleId: String?
@@ -661,6 +750,7 @@ struct CreateDebateRequest: Codable {
         case motion, format, teams
         case studentLevel = "student_level"
         case speechTimeSeconds = "speech_time_seconds"
+        case replyTimeSeconds = "reply_time_seconds"
         case classId = "class_id"
         case scheduleId = "schedule_id"
     }
@@ -732,6 +822,202 @@ struct FeedbackContentResponse: Codable {
     var resolvedFeedbackText: String {
         feedbackText ?? qualitativeFeedback?.feedbackText ?? ""
     }
+}
+
+struct SpeechTrainingResponse: Codable {
+    let speechId: String
+    let studentName: String
+    let studentLevel: String
+    let motion: String
+    let position: String
+    let debateFormat: String
+    let summary: SpeechTrainingSummary
+    let drill: PracticeDrill?
+    let ghostDebater: GhostDebaterArtifact?
+}
+
+struct SpeechTrainingSummary: Codable {
+    let averageScore: Double?
+    let strongestRubric: String?
+    let weakestRubric: String?
+    let speakingRateWpm: Double?
+    let improvementFocus: String?
+}
+
+struct PracticeDrill: Codable {
+    let title: String
+    let focusArea: String
+    let focusScore: Double?
+    let weaknessSummary: String
+    let goal: String
+    let steps: [String]
+    let selfCheck: [String]
+    let coachNote: String?
+    let provider: String?
+    let model: String?
+    let generatedAt: String?
+}
+
+struct GhostDebaterArtifact: Codable {
+    let strategicBrief: String
+    let speechText: String
+    let counterplayTargets: [String]
+    let provider: String?
+    let model: String?
+    let generatedAt: String?
+}
+
+struct ComparativeAnalysisResponse: Codable {
+    let debateId: String
+    let motion: String
+    let format: String
+    let studentLevel: String
+    let debateSummary: ComparativeDebateSummary
+    let clashes: [ComparativeClash]
+    let burdenAnalysis: ComparativeBurdenAnalysis
+    let weighing: ComparativeWeighing
+    let speakerRankings: [ComparativeSpeakerRanking]
+    let teamFeedback: ComparativeTeamFeedback
+    let provider: String?
+    let model: String?
+    let generatedAt: String?
+}
+
+struct ComparativeDebateSummary: Codable {
+    let motion: String
+    let overallWinner: String
+    let margin: String
+    let keyReason: String
+}
+
+struct ComparativeClash: Codable, Identifiable {
+    var id: String { "\(number)-\(label)" }
+    let number: Int
+    let label: String
+    let propPosition: String
+    let oppPosition: String
+    let winner: String
+    let reason: String
+    let losingSideNeeded: String
+}
+
+struct ComparativeBurdenSide: Codable {
+    let burdenSet: String?
+    let burdenMet: String?
+    let gaps: [String]?
+}
+
+struct ComparativeBurdenAnalysis: Codable {
+    let proposition: ComparativeBurdenSide?
+    let opposition: ComparativeBurdenSide?
+
+    static let empty = ComparativeBurdenAnalysis(proposition: nil, opposition: nil)
+}
+
+struct ComparativeWeighing: Codable {
+    let decisionMetric: String?
+    let scopeWinner: String?
+    let severityWinner: String?
+    let probabilityWinner: String?
+    let reversibilityWinner: String?
+
+    static let empty = ComparativeWeighing(
+        decisionMetric: nil,
+        scopeWinner: nil,
+        severityWinner: nil,
+        probabilityWinner: nil,
+        reversibilityWinner: nil
+    )
+}
+
+struct ComparativeSpeakerRanking: Codable, Identifiable {
+    var id: String { "\(rank)-\(position)" }
+    let rank: Int
+    let position: String
+    let score: Double
+    let justification: String
+}
+
+struct ComparativeTeamSideFeedback: Codable {
+    let strengths: [String]?
+    let gaps: [String]?
+    let toWinNeeded: String?
+}
+
+struct ComparativeTeamFeedback: Codable {
+    let proposition: ComparativeTeamSideFeedback?
+    let opposition: ComparativeTeamSideFeedback?
+
+    static let empty = ComparativeTeamFeedback(proposition: nil, opposition: nil)
+}
+
+struct StudentPortfolioResponse: Codable {
+    let studentName: String
+    let studentLevel: String?
+    let totalSpeeches: Int
+    let totalDebates: Int
+    let lastActivityAt: String?
+    let rubrics: [PortfolioRubricSeries]
+    let recentFeedback: [PortfolioFeedbackItem]
+}
+
+struct PortfolioRubricSeries: Codable, Identifiable {
+    var id: String { rubric }
+    let rubric: String
+    let points: [PortfolioPoint]
+    let averageScore: Double?
+    let latestScore: Double?
+    let trendDelta: Double?
+}
+
+struct PortfolioPoint: Codable, Identifiable {
+    var id: String { "\(speechId)-\(date)" }
+    let date: String
+    let score: Double?
+    let speechId: Int
+    let debateId: String
+    let motion: String
+}
+
+struct PortfolioFeedbackItem: Codable, Identifiable {
+    var id: String { "\(speechId)-\(createdAt)" }
+    let speechId: Int
+    let debateId: String
+    let motion: String
+    let createdAt: String
+    let scores: [String: RubricScore]
+    let feedbackUrl: String?
+}
+
+struct StudentBenchmarksResponse: Codable {
+    let studentName: String
+    let studentLevel: String?
+    let totals: BenchmarksTotals
+    let speakingRateWpm: BenchmarkDelta
+    let durationSeconds: BenchmarkDelta
+    let rubricScore: BenchmarkDelta
+    let latestSpeech: BenchmarkLatestSpeech?
+    let limitations: [String]
+}
+
+struct BenchmarksTotals: Codable {
+    let speeches: Int
+    let debates: Int
+}
+
+struct BenchmarkDelta: Codable {
+    let studentAvg: Double?
+    let cohortAvg: Double?
+    let delta: Double?
+}
+
+struct BenchmarkLatestSpeech: Codable {
+    let speechId: Int
+    let debateId: String
+    let motion: String
+    let createdAt: String
+    let speakingRateWpm: Double?
+    let durationSeconds: Double?
 }
 
 struct DebateHistoryResponse: Codable {

@@ -890,18 +890,30 @@ final class SetupViewModel {
         switch selectedFormat {
         case .wsdc, .australs:
             if let propIds = composition.prop {
-                teamsData.prop = propIds.enumerated().map { index, id in
+                var propSpeakers = propIds.enumerated().map { index, id in
                     let student = students.first(where: { $0.id.uuidString == id })
-                    let position = index == 3 ? "Prop Reply" : "Prop \(index + 1)"
+                    let position = "Prop \(index + 1)"
                     return StudentData(name: student?.name ?? "Unknown", position: position)
                 }
+                if shouldIncludeReplySpeeches,
+                   let replyId = composition.propReply {
+                    let replyStudent = students.first(where: { $0.id.uuidString == replyId })
+                    propSpeakers.append(StudentData(name: replyStudent?.name ?? "Unknown", position: "Prop Reply"))
+                }
+                teamsData.prop = propSpeakers
             }
             if let oppIds = composition.opp {
-                teamsData.opp = oppIds.enumerated().map { index, id in
+                var oppSpeakers = oppIds.enumerated().map { index, id in
                     let student = students.first(where: { $0.id.uuidString == id })
-                    let position = index == 3 ? "Opp Reply" : "Opp \(index + 1)"
+                    let position = "Opp \(index + 1)"
                     return StudentData(name: student?.name ?? "Unknown", position: position)
                 }
+                if shouldIncludeReplySpeeches,
+                   let replyId = composition.oppReply {
+                    let replyStudent = students.first(where: { $0.id.uuidString == replyId })
+                    oppSpeakers.append(StudentData(name: replyStudent?.name ?? "Unknown", position: "Opp Reply"))
+                }
+                teamsData.opp = oppSpeakers
             }
         case .bp:
             if let ogIds = composition.og {
@@ -948,6 +960,7 @@ final class SetupViewModel {
             format: session.format.rawValue,
             studentLevel: session.studentLevel.rawValue,
             speechTimeSeconds: session.speechTimeSeconds,
+            replyTimeSeconds: session.replyTimeSeconds,
             teams: teamsData,
             classId: session.classId,
             scheduleId: session.scheduleId
