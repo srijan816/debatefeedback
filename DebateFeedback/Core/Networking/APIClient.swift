@@ -422,12 +422,18 @@ actor APIClient {
                     goal: "Practice adding the missing middle step between claim and impact.",
                     steps: ["State the claim in one sentence", "Add the causal chain in two sentences", "Finish with one comparative impact sentence"],
                     selfCheck: ["Did I explain why the outcome happens?", "Did I compare why my side matters more?"],
-                    coachNote: "Keep it short and mechanistic."
+                    coachNote: "Keep it short and mechanistic.",
+                    provider: "mock",
+                    model: "mock-model",
+                    generatedAt: "2026-03-11T00:00:00Z"
                 ),
                 ghostDebater: GhostDebaterArtifact(
                     strategicBrief: "Attack the student’s missing mechanisms and out-weigh on probability.",
                     speechText: "Your case assumes platforms automatically suppress dissent, but that only follows if the regulation is badly designed...",
-                    counterplayTargets: ["Missing mechanism", "Weak weighing", "No trade-off analysis"]
+                    counterplayTargets: ["Missing mechanism", "Weak weighing", "No trade-off analysis"],
+                    provider: "mock",
+                    model: "mock-model",
+                    generatedAt: "2026-03-11T00:00:00Z"
                 )
             )
             return response as! T
@@ -458,7 +464,10 @@ actor APIClient {
                 burdenAnalysis: ComparativeBurdenAnalysis.empty,
                 weighing: ComparativeWeighing.empty,
                 speakerRankings: [],
-                teamFeedback: ComparativeTeamFeedback.empty
+                teamFeedback: ComparativeTeamFeedback.empty,
+                provider: "mock",
+                model: "mock-model",
+                generatedAt: "2026-03-11T00:00:00Z"
             )
             return response as! T
 

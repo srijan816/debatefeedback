@@ -108,10 +108,10 @@ struct TimerMainView: View {
         .onAppear {
             updateIdleTimer(for: viewModel)
         }
-        .onChange(of: viewModel.timerState) { _ in
+        .onChange(of: viewModel.timerState) { _, _ in
             updateIdleTimer(for: viewModel)
         }
-        .onChange(of: viewModel.isRecording) { _ in
+        .onChange(of: viewModel.isRecording) { _, _ in
             updateIdleTimer(for: viewModel)
         }
         .onDisappear {
