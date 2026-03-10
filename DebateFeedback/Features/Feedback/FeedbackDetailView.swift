@@ -928,6 +928,7 @@ struct FeedbackDetailView: View {
 
     private func loadProgressData() async {
         guard let teacherName = teacherRouteName else { return }
+        let speakerName = recording.speakerName
 
         isProgressLoading = true
         defer { isProgressLoading = false }
@@ -936,7 +937,7 @@ struct FeedbackDetailView: View {
             async let portfolioRequest: StudentPortfolioResponse = APIClient.shared.request(
                 endpoint: .getStudentPortfolio(
                     teacherName: teacherName,
-                    studentName: recording.speakerName,
+                    studentName: speakerName,
                     limit: 12
                 )
             )
@@ -944,7 +945,7 @@ struct FeedbackDetailView: View {
             async let benchmarksRequest: StudentBenchmarksResponse = APIClient.shared.request(
                 endpoint: .getStudentBenchmarks(
                     teacherName: teacherName,
-                    studentName: recording.speakerName,
+                    studentName: speakerName,
                     cohortLimit: 200
                 )
             )
