@@ -33,6 +33,7 @@ struct FeedbackDetailView: View {
     @State private var comparativeErrorMessage: String?
     @State private var progressErrorMessage: String?
     @State private var isTrainingLoading = false
+    @State private var isGeneratingTrainingTools = false
     @State private var isProgressLoading = false
     @State private var copyConfirmationVisible = false
 
@@ -307,7 +308,7 @@ struct FeedbackDetailView: View {
                 speakerHeader
 
                 if isTrainingLoading {
-                    contentLoadingView("Building training tools...")
+                    contentLoadingView("Loading training snapshot...")
                 } else if let trainingErrorMessage {
                     lightweightErrorCard(
                         title: "Training Tools Unavailable",
@@ -358,13 +359,10 @@ struct FeedbackDetailView: View {
                             )
                         }
                     }
-                    if trainingContent?.drill == nil && trainingContent?.ghostDebater == nil && comparativeAnalysis == nil {
-                        ContentUnavailableView(
-                            "Training Tools Not Ready",
-                            systemImage: "brain.head.profile",
-                            description: Text("Open this speech again once AI feedback has completed.")
-                        )
+                    if trainingContent?.drill == nil || trainingContent?.ghostDebater == nil {
+                        trainingGenerationCard
                     }
+
                 }
             }
             .frame(maxWidth: feedbackContentMaxWidth(for: contentWidth))
@@ -1027,7 +1025,7 @@ struct FeedbackDetailView: View {
 
         do {
             let response: SpeechTrainingResponse = try await APIClient.shared.request(
-                endpoint: .getSpeechTraining(speechId: speechId, generate: true)
+                endpoint: .getSpeechTraining(speechId: speechId, generate: false)
             )
             trainingContent = response
         } catch {
@@ -1044,6 +1042,23 @@ struct FeedbackDetailView: View {
         } catch {
             comparativeAnalysis = nil
             comparativeErrorMessage = "Round comparison unlocks after more speeches finish processing."
+        }
+    }
+
+    private func generateTrainingArtifacts() async {
+        guard let speechId = recording.speechId else { return }
+
+        isGeneratingTrainingTools = true
+        trainingErrorMessage = nil
+        defer { isGeneratingTrainingTools = false }
+
+        do {
+            let response: SpeechTrainingResponse = try await APIClient.shared.request(
+                endpoint: .getSpeechTraining(speechId: speechId, generate: true)
+            )
+            trainingContent = response
+        } catch {
+            trainingErrorMessage = error.localizedDescription
         }
     }
 
@@ -1068,6 +1083,37 @@ struct FeedbackDetailView: View {
                 "\(section.title)\n\(section.content.trimmingCharacters(in: .whitespacesAndNewlines))"
             }
             .joined(separator: "\n\n")
+    }
+
+    private var trainingGenerationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Generate Training Tools On Demand", systemImage: "bolt.badge.clock")
+                .font(.headline)
+
+            Text("Drills and Ghost Debater are generated only when you ask for them so the app stays faster and token usage stays lower.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            Button {
+                Task {
+                    await generateTrainingArtifacts()
+                }
+            } label: {
+                HStack {
+                    if isGeneratingTrainingTools {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                    Text(isGeneratingTrainingTools ? "Generating..." : "Generate Training Tools")
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isGeneratingTrainingTools)
+        }
+        .padding(18)
+        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func copyFeedbackToClipboard() {
