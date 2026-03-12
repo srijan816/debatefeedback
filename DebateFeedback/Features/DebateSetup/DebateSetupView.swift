@@ -15,6 +15,9 @@ struct DebateSetupView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    @Query(sort: \DebateSession.createdAt, order: .reverse)
+    private var allSessions: [DebateSession]
+
     @State private var viewModel = SetupViewModel()
     @FocusState private var isStudentNameFieldFocused: Bool
     @State private var isUnassignedDropTargeted = false
@@ -161,6 +164,27 @@ struct DebateSetupView: View {
 
     private func contentMaxWidth(for width: CGFloat) -> CGFloat {
         usesWideLayout(for: width) ? min(width - 64, 1320) : width
+    }
+
+    private var teacherRecentSessions: [DebateSession] {
+        guard let currentTeacher = coordinator.currentTeacher else {
+            return []
+        }
+
+        return allSessions.filter { session in
+            if let sessionTeacherId = session.teacher?.id, sessionTeacherId == currentTeacher.id {
+                return true
+            }
+
+            guard let sessionTeacherName = session.teacher?.name else {
+                return false
+            }
+
+            return sessionTeacherName.compare(
+                currentTeacher.name,
+                options: [.caseInsensitive, .diacriticInsensitive]
+            ) == .orderedSame
+        }
     }
 
     // MARK: - State Restoration
@@ -414,6 +438,10 @@ struct DebateSetupView: View {
                 subtitle: "Lock the motion, format, and schedule context before you place speakers."
             )
 
+            if !teacherRecentSessions.isEmpty {
+                recentSessionsCard
+            }
+
             if isWideLayout {
                 VStack(spacing: 20) {
                     if showsSessionSourceCard {
@@ -443,6 +471,75 @@ struct DebateSetupView: View {
                 }
             }
         }
+    }
+
+    private var recentSessionsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Past sessions")
+                        .font(.headline)
+                        .foregroundColor(Constants.Colors.textPrimary)
+
+                    Text("Jump back into recordings, transcripts, and feedback from recent classes.")
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+
+                Spacer()
+
+                Button("See all") {
+                    coordinator.viewHistory()
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(Constants.Colors.primaryBlue)
+            }
+
+            VStack(spacing: 10) {
+                ForEach(Array(teacherRecentSessions.prefix(3)), id: \.id) { session in
+                    Button {
+                        coordinator.navigateTo(.feedback(debateSession: session))
+                    } label: {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(session.motion)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Constants.Colors.textPrimary)
+                                    .lineLimit(2)
+
+                                HStack(spacing: 10) {
+                                    Label(session.createdAt.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar")
+                                    Label("\(session.speechRecordings?.count ?? 0) recordings", systemImage: "waveform")
+                                    if let classId = session.classId, !classId.isEmpty {
+                                        Label(classId, systemImage: "person.3")
+                                    }
+                                }
+                                .font(.caption)
+                                .foregroundColor(Constants.Colors.textSecondary)
+                                .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(Constants.Colors.textSecondary)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Constants.Colors.backgroundSecondary)
+                        .cornerRadius(16)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(18)
+        .softCard(
+            backgroundColor: Constants.Colors.cardBackground,
+            borderColor: Constants.Colors.primaryBlue.opacity(0.16),
+            cornerRadius: 20
+        )
     }
 
     private var classSelectionSection: some View {
