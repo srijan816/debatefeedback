@@ -56,7 +56,12 @@ final class AppCoordinator {
     func returnToDebateSetup() {
         navigationPath = [.debateSetup]
         currentScreen = .debateSetup
+    }
+
+    func completeRound() {
         currentDebateSession = nil
+        navigationPath = [.debateSetup]
+        currentScreen = .debateSetup
     }
 
     // MARK: - Authentication Flow

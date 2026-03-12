@@ -63,6 +63,19 @@ enum Endpoint {
         }
     }
 
+    var timeoutInterval: TimeInterval {
+        switch self {
+        case .getSpeechTraining:
+            return 45.0
+        case .getComparativeAnalysis:
+            return 40.0
+        case .uploadSpeech:
+            return Constants.API.uploadTimeout
+        default:
+            return Constants.API.requestTimeout
+        }
+    }
+
     func url(baseURL: String = Constants.API.baseURL) -> URL? {
         URL(string: baseURL + path)
     }

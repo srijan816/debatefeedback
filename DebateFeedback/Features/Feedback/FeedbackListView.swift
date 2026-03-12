@@ -8,10 +8,18 @@ import SwiftUI
 import SwiftData
 
 struct FeedbackListView: View {
+    enum PresentationMode {
+        case standard
+        case activeDebate
+    }
+
     let debateSession: DebateSession
+    var presentationMode: PresentationMode = .standard
 
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(\.dismiss) private var dismiss
     @Query private var allRecordings: [SpeechRecording]
+    @State private var showingCompleteRoundConfirmation = false
 
     private var recordings: [SpeechRecording] {
         allRecordings.filter { $0.debateSession?.id == debateSession.id }
@@ -71,17 +79,47 @@ struct FeedbackListView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     HapticManager.shared.success()
-                    coordinator.returnToDebateSetup()
+                    handleDone()
                 } label: {
-                    Text("Done")
+                    Text(presentationMode == .activeDebate ? "Resume" : "Setup")
                         .fontWeight(.semibold)
                 }
                 .accessibilityLabel("Done button")
-                .accessibilityHint("Return to home screen")
+                .accessibilityHint(presentationMode == .activeDebate ? "Return to the active debate" : "Return to the setup screen without clearing this round")
             }
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if presentationMode == .standard, coordinator.currentDebateSession != nil {
+                    Menu {
+                        Button("Complete Round", role: .destructive) {
+                            showingCompleteRoundConfirmation = true
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("More actions")
+                    .accessibilityHint("Complete the active round")
+                }
+            }
+        }
+        .alert("Complete Round?", isPresented: $showingCompleteRoundConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Complete Round", role: .destructive) {
+                coordinator.completeRound()
+            }
+        } message: {
+            Text("This clears the current round from the workflow. Use this only when the round is fully finished.")
         }
         .subtleBoundaryEffects(showTopEdge: true, showBottomEdge: true, intensity: 0.06)
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
+    }
+
+    private func handleDone() {
+        if presentationMode == .activeDebate {
+            dismiss()
+        } else {
+            coordinator.returnToDebateSetup()
+        }
     }
 
     // MARK: - Debate Info Header
@@ -208,8 +246,11 @@ struct FeedbackCard: View {
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
         .sheet(isPresented: $showingShareSheet) {
-            if let url = recording.feedbackUrl {
-                ShareSheet(items: [URL(string: url)!])
+            if let url = FeedbackDocumentURLResolver.resolve(
+                speechId: recording.speechId,
+                feedbackURL: recording.feedbackUrl
+            ) {
+                ShareSheet(items: [url])
             }
         }
     }
@@ -240,8 +281,10 @@ struct FeedbackCard: View {
     private var actionButtons: some View {
         HStack(spacing: 8) {
             Button {
-                if let urlString = recording.feedbackUrl,
-                   let url = URL(string: urlString) {
+                if let url = FeedbackDocumentURLResolver.resolve(
+                    speechId: recording.speechId,
+                    feedbackURL: recording.feedbackUrl
+                ) {
                     UIApplication.shared.open(url)
                 }
             } label: {

@@ -15,6 +15,7 @@ struct TimerMainView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var viewModel: TimerViewModel?
+    @State private var showingFeedbackSheet = false
 
     var body: some View {
         Group {
@@ -95,7 +96,7 @@ struct TimerMainView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("View Feedback") {
                     HapticManager.shared.success()
-                    coordinator.finishDebate()
+                    showingFeedbackSheet = true
                 }
                 .fontWeight(.semibold)
                 .foregroundColor(Constants.Colors.softMint)
@@ -116,6 +117,14 @@ struct TimerMainView: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+        }
+        .sheet(isPresented: $showingFeedbackSheet) {
+            NavigationStack {
+                FeedbackListView(
+                    debateSession: debateSession,
+                    presentationMode: .activeDebate
+                )
+            }
         }
     }
 
@@ -310,8 +319,37 @@ TimerTextView(viewModel: viewModel)
         HStack(spacing: 20) {
             if viewModel.isRecording {
                 Button {
+                    HapticManager.shared.medium()
+                    if viewModel.isPaused {
+                        viewModel.resumeTimer()
+                    } else {
+                        viewModel.pauseTimer()
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
+                            .font(.title2)
+                        Text(viewModel.isPaused ? "Resume" : "Pause")
+                            .fontWeight(.bold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Constants.Sizing.minimumTapTarget * 1.5)
+                }
+                .gradientButtonStyle(
+                    gradient: LinearGradient(
+                        colors: [Constants.Colors.primaryBlue, Constants.Colors.primaryBlueDark],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .accessibilityLabel(viewModel.isPaused ? "Resume recording button" : "Pause recording button")
+                .accessibilityHint(viewModel.isPaused ? "Resume recording the current speech" : "Pause recording the current speech")
+
+                Button {
                     HapticManager.shared.heavy()
-                    viewModel.stopTimer()
+                    Task {
+                        await viewModel.stopTimer()
+                    }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "stop.fill")
@@ -339,7 +377,7 @@ TimerTextView(viewModel: viewModel)
                     HStack(spacing: 12) {
                         Image(systemName: "play.fill")
                             .font(.title2)
-                        Text("Start Recording")
+                        Text(viewModel.currentSpeakerHasRecording ? "Append Recording" : "Start Recording")
                             .fontWeight(.bold)
                     }
                     .frame(maxWidth: .infinity)
@@ -347,7 +385,7 @@ TimerTextView(viewModel: viewModel)
                 }
                 .gradientButtonStyle()
                 .accessibilityLabel("Start recording button")
-                .accessibilityHint("Starts recording the current speech and begins the timer")
+                .accessibilityHint(viewModel.currentSpeakerHasRecording ? "Record more for this speaker and append it to the existing speech" : "Starts recording the current speech and begins the timer")
             }
         }
         .padding(.horizontal, 32)

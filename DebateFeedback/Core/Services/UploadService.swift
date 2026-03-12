@@ -56,7 +56,8 @@ final class UploadService: NSObject {
             "speaker_name": recording.speakerName,
             "speaker_position": recording.speakerPosition,
             "duration_seconds": resolvedDuration,
-            "student_level": debateSession.studentLevel.rawValue
+            "student_level": debateSession.studentLevel.rawValue,
+            "speech_id": recording.speechId ?? ""
         ]
 
         // 2. Persist UploadRequest

@@ -6,6 +6,7 @@
 
 import SwiftUI
 import WebKit
+import UIKit
 
 struct FeedbackDetailView: View {
     let recording: SpeechRecording
@@ -32,6 +33,7 @@ struct FeedbackDetailView: View {
     @State private var progressErrorMessage: String?
     @State private var isTrainingLoading = false
     @State private var isProgressLoading = false
+    @State private var copyConfirmationVisible = false
 
     init(recording: SpeechRecording) {
         self.recording = recording
@@ -76,9 +78,32 @@ struct FeedbackDetailView: View {
                 }
             }
         }
+        .overlay(alignment: .top) {
+            if copyConfirmationVisible {
+                Text("Copied")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .navigationTitle("Feedback")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if !copyableFeedbackText.isEmpty {
+                    Button {
+                        copyFeedbackToClipboard()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .accessibilityLabel("Copy feedback")
+                    .accessibilityHint("Copy the structured feedback to the clipboard")
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     if let url = resolvedFeedbackDocumentURL {
@@ -935,16 +960,47 @@ struct FeedbackDetailView: View {
     }
 
     private var resolvedFeedbackDocumentURL: URL? {
-        if let speechId = recording.speechId, !speechId.isEmpty {
-            let base = Constants.API.baseURL.replacingOccurrences(of: "/api", with: "")
-            return URL(string: "\(base)/feedback/view/\(speechId)")
+        FeedbackDocumentURLResolver.resolve(
+            speechId: recording.speechId,
+            feedbackURL: recording.feedbackUrl
+        )
+    }
+
+    private var copyableFeedbackText: String {
+        let activeSections = displaySections.filter {
+            !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
-        if let urlString = recording.feedbackUrl {
-            return URL(string: urlString)
+        guard !activeSections.isEmpty else {
+            return feedbackContent.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        return nil
+        return activeSections
+            .map { section in
+                "\(section.title)\n\(section.content.trimmingCharacters(in: .whitespacesAndNewlines))"
+            }
+            .joined(separator: "\n\n")
+    }
+
+    private func copyFeedbackToClipboard() {
+        let text = copyableFeedbackText
+        guard !text.isEmpty else {
+            return
+        }
+
+        UIPasteboard.general.string = text
+        withAnimation(.easeInOut(duration: 0.2)) {
+            copyConfirmationVisible = true
+        }
+
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    copyConfirmationVisible = false
+                }
+            }
+        }
     }
 
     private func loadProgressData() async {

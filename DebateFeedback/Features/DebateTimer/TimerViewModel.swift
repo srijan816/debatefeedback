@@ -24,6 +24,7 @@ final class TimerViewModel {
     private(set) var currentSpeakerIndex = 0
     private(set) var speakers: [(name: String, position: String, studentId: String)] = []
     private(set) var isRecording = false
+    private(set) var isPaused = false
     private(set) var currentRecordingURL: URL?
     private(set) var recordings: [SpeechRecording] = []
 
@@ -63,6 +64,10 @@ final class TimerViewModel {
                 a.recordedAt < b.recordedAt
             })
             self.recordings = sortedRecordings
+
+            if !speakers.isEmpty {
+                currentSpeakerIndex = min(sortedRecordings.count, speakers.count - 1)
+            }
         }
     }
 
@@ -189,6 +194,11 @@ final class TimerViewModel {
     }
 
     func startTimer() {
+        if isPaused {
+            resumeTimer()
+            return
+        }
+
         guard !isRecording else { return }
 
         do {
@@ -220,7 +230,7 @@ final class TimerViewModel {
 
             currentRecordingURL = url
             isRecording = true
-
+            isPaused = false
             // Start timer
             timerService.start()
 
@@ -236,13 +246,28 @@ final class TimerViewModel {
         }
     }
 
-    func stopTimer() {
+    func pauseTimer() {
+        guard isRecording, !isPaused else { return }
+        audioService.pauseRecording()
+        timerService.pause()
+        isPaused = true
+    }
+
+    func resumeTimer() {
+        guard isRecording, isPaused else { return }
+        audioService.resumeRecording()
+        timerService.resume()
+        isPaused = false
+    }
+
+    func stopTimer() async {
         guard isRecording else { return }
 
         // Stop recording
         guard let result = audioService.stopRecording() else {
             // If recording failed or was already stopped, force reset state
             isRecording = false
+            isPaused = false
             currentRecordingURL = nil
             timerService.stop()
 
@@ -282,22 +307,33 @@ final class TimerViewModel {
         timerService.stop()
 
         isRecording = false
+        isPaused = false
         currentRecordingURL = nil
 
-        // Create recording record
-        let recording = SpeechRecording(
-            speakerName: currentSpeaker.name,
-            speakerPosition: currentSpeaker.position,
-            localFilePath: result.url.path,
-            durationSeconds: Int(result.duration),
-            debateSession: debateSession
-        )
+        let recording: SpeechRecording
+        if let appendTarget = currentSpeakerRecording {
+            do {
+                recording = try await appendRecording(result, to: appendTarget)
+            } catch {
+                errorMessage = "Failed to append recording: \(error.localizedDescription)"
+                showError = true
+                return
+            }
+        } else {
+            let newRecording = SpeechRecording(
+                speakerName: currentSpeaker.name,
+                speakerPosition: currentSpeaker.position,
+                localFilePath: result.url.path,
+                durationSeconds: Int(result.duration),
+                debateSession: debateSession
+            )
 
-        modelContext.insert(recording)
-        recordings.append(recording)
+            modelContext.insert(newRecording)
+            recordings.append(newRecording)
+            recording = newRecording
+        }
 
         try? modelContext.save()
-
         // Check if session completed
         if recordings.count == speakers.count {
             let sessionDuration = sessionStartTime.map { Date().timeIntervalSince($0) } ?? 0
@@ -341,6 +377,17 @@ final class TimerViewModel {
 
     var speakerProgress: String {
         "\(currentSpeakerIndex + 1) / \(speakers.count)"
+    }
+
+    var currentSpeakerRecording: SpeechRecording? {
+        recordings
+            .filter { $0.speakerPosition == currentSpeaker.position }
+            .sorted { $0.recordedAt < $1.recordedAt }
+            .last
+    }
+
+    var currentSpeakerHasRecording: Bool {
+        currentSpeakerRecording != nil
     }
 
     func nextSpeaker() {
@@ -595,5 +642,48 @@ final class TimerViewModel {
         // Note: Cannot reliably cancel recording in deinit due to async/MainActor requirements
         // Recording will be stopped when the service is deallocated
         playbackService.stop()
+    }
+
+    private func appendRecording(
+        _ result: (url: URL, duration: TimeInterval),
+        to recording: SpeechRecording
+    ) async throws -> SpeechRecording {
+        let existingURL = URL(fileURLWithPath: recording.localFilePath)
+        let mergedURL = FileManager.audioFileURL(
+            filename: FileManager.generateAudioFilename(
+                debateId: debateSession.id.uuidString,
+                speakerName: recording.speakerName,
+                position: recording.speakerPosition
+            )
+        )
+
+        let mergedDuration = try await AudioCompositionService.appendAudio(
+            originalURL: existingURL,
+            appendedURL: result.url,
+            outputURL: mergedURL
+        )
+
+        uploadService.cancelUpload(for: recording.id)
+
+        try? FileManager.deleteAudioFile(at: existingURL.path)
+        try? FileManager.deleteAudioFile(at: result.url.path)
+
+        recording.localFilePath = mergedURL.path
+        recording.durationSeconds = Int(mergedDuration.rounded())
+        recording.recordedAt = Date()
+        recording.uploadStatus = .pending
+        recording.processingStatus = .pending
+        recording.transcriptionStatus = .pending
+        recording.feedbackStatus = .pending
+        recording.feedbackUrl = nil
+        recording.feedbackContent = nil
+        recording.transcriptUrl = nil
+        recording.transcriptText = nil
+        recording.transcriptionErrorMessage = nil
+        recording.feedbackErrorMessage = nil
+        recording.playableMoments = []
+        recording.uploadProgress = 0
+
+        return recording
     }
 }

@@ -13,6 +13,7 @@ final class AudioRecordingService: NSObject {
     private var currentRecordingURL: URL?
 
     private(set) var isRecording = false
+    private(set) var isPaused = false
     private(set) var recordingDuration: TimeInterval = 0
     private(set) var hasPermission = false
 
@@ -70,6 +71,7 @@ final class AudioRecordingService: NSObject {
 
         currentRecordingURL = url
         isRecording = true
+        isPaused = false
         recordingDuration = 0
 
         return url
@@ -87,6 +89,7 @@ final class AudioRecordingService: NSObject {
         
         recorder.stop()
         isRecording = false
+        isPaused = false
 
         recordingDuration = duration
 
@@ -100,14 +103,14 @@ final class AudioRecordingService: NSObject {
         guard let recorder = audioRecorder, isRecording else { return }
 
         recorder.pause()
-        isRecording = false
+        isPaused = true
     }
 
     func resumeRecording() {
-        guard let recorder = audioRecorder, !isRecording else { return }
+        guard let recorder = audioRecorder, isRecording, isPaused else { return }
 
         recorder.record()
-        isRecording = true
+        isPaused = false
     }
 
     func cancelRecording() {
@@ -115,6 +118,7 @@ final class AudioRecordingService: NSObject {
 
         recorder.stop()
         isRecording = false
+        isPaused = false
 
         if let url = currentRecordingURL {
             try? FileManager.deleteAudioFile(at: url.path)
@@ -128,7 +132,7 @@ final class AudioRecordingService: NSObject {
     // MARK: - Audio Level Monitoring
 
     func updateMeters() -> Float {
-        guard let recorder = audioRecorder, isRecording else {
+        guard let recorder = audioRecorder, isRecording, !isPaused else {
             return 0.0
         }
 
@@ -148,6 +152,7 @@ extension AudioRecordingService: AVAudioRecorderDelegate {
         if !flag {
             // Recording failed or was interrupted
             isRecording = false
+            isPaused = false
             currentRecordingURL = nil
         }
     }
@@ -155,6 +160,7 @@ extension AudioRecordingService: AVAudioRecorderDelegate {
     func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         print("Recording encode error: \(error?.localizedDescription ?? "Unknown")")
         isRecording = false
+        isPaused = false
     }
 }
 

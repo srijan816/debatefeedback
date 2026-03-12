@@ -19,6 +19,8 @@ struct DebateSetupView: View {
     @State private var isUnassignedDropTargeted = false
     @State private var isTimingDetailsExpanded = false
     @State private var isRosterExpanded = true
+    @State private var showingCompleteRoundConfirmation = false
+    @State private var showingWheelOfDoom = false
 
     var body: some View {
         NavigationStack {
@@ -87,11 +89,48 @@ struct DebateSetupView: View {
                     }
                     .foregroundColor(Constants.Colors.softPink)
                 }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if coordinator.currentDebateSession != nil {
+                        Menu {
+                            Button("Resume Round") {
+                                resumeCurrentRound()
+                            }
+
+                            Button("Complete Round", role: .destructive) {
+                                showingCompleteRoundConfirmation = true
+                            }
+                        } label: {
+                            Label("Round Actions", systemImage: "ellipsis.circle")
+                        }
+                    }
+                }
             }
             .alert("Error", isPresented: $viewModel.showError) {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(viewModel.errorMessage)
+            }
+            .alert("Complete Round?", isPresented: $showingCompleteRoundConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Complete Round", role: .destructive) {
+                    completeCurrentRound()
+                }
+            } message: {
+                Text("This will clear the active round from the live workflow and return setup to a fresh state.")
+            }
+            .sheet(isPresented: $showingWheelOfDoom) {
+                WheelOfDoomSheet(
+                    students: viewModel.unassignedStudents(),
+                    nextSeatLabel: viewModel.nextAutoAssignmentLabel(),
+                    onAssign: { student in
+                        if viewModel.assignStudentToNextAvailableSeat(student) {
+                            viewModel.showSuccessToast("\(student.name) seated")
+                        } else {
+                            viewModel.showErrorToast("No seat available for \(student.name)")
+                        }
+                    }
+                )
             }
         }
         .subtleBoundaryEffects(showTopEdge: true, showBottomEdge: true, intensity: 0.05)
@@ -887,6 +926,23 @@ struct DebateSetupView: View {
                     )
                     .disabled(viewModel.students.isEmpty)
                     .opacity(viewModel.students.isEmpty ? 0.5 : 1.0)
+
+                    if viewModel.studentLevel == .primary {
+                        Button("Wheel of Doom") {
+                            showingWheelOfDoom = true
+                        }
+                        .foregroundColor(Constants.Colors.textPrimary)
+                        .frame(height: Constants.Sizing.minimumTapTarget)
+                        .padding(.horizontal, 18)
+                        .background(Constants.Colors.backgroundSecondary)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Constants.Colors.primaryBlue.opacity(0.35), lineWidth: 1)
+                        )
+                        .disabled(viewModel.unassignedStudents().isEmpty || viewModel.nextAutoAssignmentLabel() == nil)
+                        .opacity(viewModel.unassignedStudents().isEmpty || viewModel.nextAutoAssignmentLabel() == nil ? 0.5 : 1.0)
+                    }
                 }
             }
             .padding(18)
@@ -900,7 +956,7 @@ struct DebateSetupView: View {
                 unassignedStudentsPanel
                     .padding(.top, 12)
             } label: {
-                sectionHeader("Unassigned tray", subtitle: "Drag students from here into a team slot, or back here to remove them from a side.")
+                sectionHeader("Unassigned tray", subtitle: "Double-tap to place the next seat, or drag for manual placement and reordering.")
             }
             .padding(18)
             .softCard(
@@ -912,6 +968,8 @@ struct DebateSetupView: View {
 
             VStack(alignment: .leading, spacing: 14) {
                 sectionHeader("Assignment Canvas", subtitle: "Team order controls speech order. Drag within a team to reorder.")
+
+                assignmentHintCard
 
                 switch viewModel.selectedFormat {
                 case .wsdc, .australs:
@@ -1008,6 +1066,29 @@ struct DebateSetupView: View {
         }
     }
 
+    private var assignmentHintCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Double-tap assigns the next open seat. Drag still works for manual placement and reordering.", systemImage: "hand.tap")
+                .font(.caption)
+                .foregroundColor(Constants.Colors.textSecondary)
+
+            if let nextSeatLabel = viewModel.nextAutoAssignmentLabel() {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.primaryBlue)
+                    Text("Next auto seat: \(nextSeatLabel)")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+                }
+            }
+        }
+        .padding(12)
+        .background(Constants.Colors.backgroundSecondary)
+        .cornerRadius(14)
+    }
+
     private var unassignedStudentsPanel: some View {
         let unassigned = viewModel.unassignedStudents()
         let total = viewModel.students.count
@@ -1034,9 +1115,18 @@ struct DebateSetupView: View {
                     .foregroundColor(Constants.Colors.textSecondary)
             }
 
-            Text("Drag students into a team slot to assign. Drag within a team to reorder.")
-                .font(.caption)
-                .foregroundColor(Constants.Colors.textSecondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Double-tap a name to place the next seat, or drag into a team slot for manual placement.")
+                    .font(.caption)
+                    .foregroundColor(Constants.Colors.textSecondary)
+
+                if let nextSeatLabel = viewModel.nextAutoAssignmentLabel() {
+                    Text("Next seat in line: \(nextSeatLabel)")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+                }
+            }
 
             if viewModel.students.isEmpty {
                 VStack(spacing: 12) {
@@ -1064,6 +1154,13 @@ struct DebateSetupView: View {
                     ForEach(unassigned, id: \.id) { student in
                         DraggableStudentRow(
                             student: student,
+                            onDoubleTap: {
+                                if viewModel.assignStudentToNextAvailableSeat(student) {
+                                    viewModel.showSuccessToast("\(student.name) assigned")
+                                } else {
+                                    viewModel.showErrorToast("No assignment slot is available.")
+                                }
+                            },
                             onRemove: {
                                 viewModel.removeStudent(student)
                             }
@@ -1313,7 +1410,11 @@ struct DebateSetupView: View {
             if viewModel.currentStep == .teamAssignment {
                 Button {
                     Task {
-                        await startDebate()
+                        if coordinator.currentDebateSession != nil {
+                            resumeCurrentRound()
+                        } else {
+                            await startDebate()
+                        }
                     }
                 } label: {
                     HStack(spacing: 10) {
@@ -1321,9 +1422,9 @@ struct DebateSetupView: View {
                             ProgressView()
                                 .tint(.white)
                         }
-                        Text("Start Debate")
+                        Text(coordinator.currentDebateSession == nil ? "Start Debate" : "Resume Round")
                             .fontWeight(.bold)
-                        Image(systemName: "play.fill")
+                        Image(systemName: coordinator.currentDebateSession == nil ? "play.fill" : "arrow.clockwise")
                             .font(.system(size: 14, weight: .bold))
                     }
                     .frame(minWidth: 140)
@@ -1369,12 +1470,27 @@ struct DebateSetupView: View {
 
         coordinator.startDebate(session: session)
     }
+
+    private func resumeCurrentRound() {
+        guard let session = coordinator.currentDebateSession else { return }
+        coordinator.startDebate(session: session)
+    }
+
+    private func completeCurrentRound() {
+        coordinator.completeRound()
+        viewModel = SetupViewModel()
+
+        Task {
+            await viewModel.loadScheduleIfNeeded(for: coordinator.currentTeacher)
+        }
+    }
 }
 
 // MARK: - Supporting Views
 
 struct DraggableStudentRow: View {
     let student: Student
+    let onDoubleTap: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -1398,8 +1514,233 @@ struct DraggableStudentRow: View {
         .background(Constants.Colors.backgroundSecondary)
         .cornerRadius(12)
         .contentShape(Rectangle())
+        .onTapGesture(count: 2, perform: onDoubleTap)
         .draggable(StudentDragPayload(studentId: student.id))
-        .accessibilityHint("Drag to assign \(student.name) to a team")
+        .accessibilityHint("Double-tap to auto-assign \(student.name), or drag to place them manually")
+    }
+}
+
+struct WheelOfDoomSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let students: [Student]
+    let nextSeatLabel: String?
+    let onAssign: (Student) -> Void
+
+    @State private var wheelRotation: Double = 0
+    @State private var selectedStudentId: UUID?
+    @State private var isSpinning = false
+
+    private var selectedStudent: Student? {
+        students.first { $0.id == selectedStudentId }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                VStack(spacing: 8) {
+                    Text("Wheel of Doom")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(Constants.Colors.textPrimary)
+
+                    if let nextSeatLabel {
+                        Text("Next seat: \(nextSeatLabel)")
+                            .font(.subheadline)
+                            .foregroundColor(Constants.Colors.textSecondary)
+                    } else {
+                        Text("No more seats available.")
+                            .font(.subheadline)
+                            .foregroundColor(Constants.Colors.textSecondary)
+                    }
+                }
+
+                if students.isEmpty {
+                    ContentUnavailableView(
+                        "Everyone has been assigned",
+                        systemImage: "checkmark.circle",
+                        description: Text("Close the wheel and start the round, or drag people around if you want a different order.")
+                    )
+                } else {
+                    ZStack(alignment: .top) {
+                        WheelOfDoomGraphic(
+                            names: students.map(\.name),
+                            rotation: wheelRotation
+                        )
+                        .frame(width: 280, height: 280)
+
+                        Image(systemName: "triangle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(Constants.Colors.softPink)
+                            .offset(y: -18)
+                    }
+
+                    VStack(spacing: 10) {
+                        if let selectedStudent {
+                            Text("\(selectedStudent.name) is up")
+                                .font(.headline)
+                                .foregroundColor(Constants.Colors.textPrimary)
+                        } else {
+                            Text("Spin to pick the next speaker")
+                                .font(.headline)
+                                .foregroundColor(Constants.Colors.textPrimary)
+                        }
+
+                        Text("The wheel uses the same alternating seat order as double-tap assignment.")
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(Constants.Colors.textSecondary)
+                    }
+
+                    Button {
+                        spinWheel()
+                    } label: {
+                        HStack(spacing: 10) {
+                            if isSpinning {
+                                ProgressView()
+                                    .tint(.white)
+                            }
+                            Text(isSpinning ? "Spinning..." : "Spin the wheel")
+                                .fontWeight(.bold)
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 14, weight: .bold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: Constants.Sizing.minimumTapTarget)
+                    }
+                    .gradientButtonStyle(isEnabled: !students.isEmpty && nextSeatLabel != nil && !isSpinning)
+                    .disabled(students.isEmpty || nextSeatLabel == nil || isSpinning)
+                }
+
+                Spacer()
+            }
+            .padding(24)
+            .background(Constants.Colors.backgroundLight.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Back") {
+                        dismiss()
+                    }
+                }
+            }
+            .onChange(of: students.map(\.id)) {
+                selectedStudentId = nil
+                isSpinning = false
+            }
+        }
+    }
+
+    private func spinWheel() {
+        guard !students.isEmpty, !isSpinning else { return }
+        guard let chosenStudent = students.randomElement(),
+              let index = students.firstIndex(where: { $0.id == chosenStudent.id }) else { return }
+
+        isSpinning = true
+        selectedStudentId = nil
+
+        let segmentAngle = 360.0 / Double(students.count)
+        let targetMidpoint = (Double(index) * segmentAngle) + (segmentAngle / 2)
+        let desiredOffset = 270.0 - targetMidpoint
+        let normalizedCurrent = wheelRotation.truncatingRemainder(dividingBy: 360)
+        let delta = desiredOffset - normalizedCurrent
+
+        withAnimation(.spring(response: 2.1, dampingFraction: 0.84)) {
+            wheelRotation += 1440 + delta
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            selectedStudentId = chosenStudent.id
+            onAssign(chosenStudent)
+        }
+    }
+}
+
+struct WheelOfDoomGraphic: View {
+    let names: [String]
+    let rotation: Double
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(names.enumerated()), id: \.offset) { index, name in
+                WheelSlice(
+                    startAngle: angle(for: index),
+                    endAngle: angle(for: index + 1)
+                )
+                .fill(sliceColor(index))
+
+                Text(name)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .frame(width: 84)
+                    .rotationEffect(textAngle(for: index))
+                    .offset(textOffset(for: index))
+            }
+
+            Circle()
+                .fill(Constants.Colors.backgroundLight)
+                .frame(width: 48, height: 48)
+                .overlay(
+                    Circle()
+                        .stroke(Constants.Colors.textTertiary.opacity(0.25), lineWidth: 1)
+                )
+        }
+        .rotationEffect(.degrees(rotation))
+        .overlay(
+            Circle()
+                .stroke(Constants.Colors.textTertiary.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private func angle(for index: Int) -> Angle {
+        guard !names.isEmpty else { return .degrees(0) }
+        return .degrees((360.0 / Double(names.count)) * Double(index) - 90.0)
+    }
+
+    private func textAngle(for index: Int) -> Angle {
+        guard !names.isEmpty else { return .degrees(0) }
+        let segment = 360.0 / Double(names.count)
+        return .degrees((segment * Double(index)) + (segment / 2))
+    }
+
+    private func textOffset(for index: Int) -> CGSize {
+        guard !names.isEmpty else { return .zero }
+        let angle = ((360.0 / Double(names.count)) * Double(index)) + ((360.0 / Double(names.count)) / 2) - 90.0
+        let radians = angle * .pi / 180
+        let radius: CGFloat = 88
+        return CGSize(
+            width: CGFloat(cos(radians)) * radius,
+            height: CGFloat(sin(radians)) * radius
+        )
+    }
+
+    private func sliceColor(_ index: Int) -> Color {
+        let palette = [
+            Constants.Colors.primaryBlue,
+            Constants.Colors.softPink,
+            Constants.Colors.softMint,
+            Constants.Colors.softPurple,
+            Constants.Colors.softCyan
+        ]
+        return palette[index % palette.count]
+    }
+}
+
+struct WheelSlice: Shape {
+    let startAngle: Angle
+    let endAngle: Angle
+
+    func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+
+        var path = Path()
+        path.move(to: center)
+        path.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
+        path.closeSubpath()
+        return path
     }
 }
 

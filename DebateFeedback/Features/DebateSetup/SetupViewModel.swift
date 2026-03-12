@@ -429,32 +429,16 @@ final class SetupViewModel {
 
     func autoAssignStudents() {
         clearAssignments()
-
-        let teamOrder: [TeamType]
-        switch selectedFormat.teamStructure {
-        case .propOpp, .asianParliamentary:
-            teamOrder = [.prop, .opp]
-        case .britishParliamentary:
-            teamOrder = [.og, .oo, .cg, .co]
+        for student in students.shuffled() {
+            _ = assignStudentToNextAvailableSeat(student)
         }
+    }
 
-        guard !teamOrder.isEmpty else { return }
-
-        var teamIndex = 0
-        for student in students {
-            var attempts = 0
-            while attempts < teamOrder.count {
-                let team = teamOrder[teamIndex % teamOrder.count]
-                if teamStudents(for: team).count < maxSlots(for: team) {
-                    assignToTeam(student, team: team)
-                    teamIndex += 1
-                    break
-                }
-
-                teamIndex += 1
-                attempts += 1
-            }
-        }
+    @discardableResult
+    func assignStudentToNextAvailableSeat(_ student: Student) -> Bool {
+        guard let nextSeat = nextAvailableSequentialSeat() else { return false }
+        assignToTeam(student, team: nextSeat.team, position: nextSeat.position)
+        return true
     }
 
     func assignToTeam(_ student: Student, team: TeamType, position: Int?) {
@@ -558,6 +542,67 @@ final class SetupViewModel {
         if cgTeam.contains(where: { $0.id == student.id }) { return .cg }
         if coTeam.contains(where: { $0.id == student.id }) { return .co }
         return nil
+    }
+
+    private func teamAssignmentSequence() -> [TeamType] {
+        switch selectedFormat.teamStructure {
+        case .propOpp, .asianParliamentary:
+            return [.prop, .opp]
+        case .britishParliamentary:
+            return [.og, .oo, .cg, .co]
+        }
+    }
+
+    private func nextAvailableSequentialSeat() -> (team: TeamType, position: Int)? {
+        let orderedTeams = teamAssignmentSequence()
+        guard !orderedTeams.isEmpty else { return nil }
+
+        let maxRounds = orderedTeams.map { maxSlots(for: $0) }.max() ?? 0
+        guard maxRounds > 0 else { return nil }
+
+        for round in 1...maxRounds {
+            for team in orderedTeams {
+                let teamCount = teamStudents(for: team).count
+                let teamMax = maxSlots(for: team)
+                guard round <= teamMax else { continue }
+                if teamCount < round {
+                    return (team, round)
+                }
+            }
+        }
+
+        return nil
+    }
+
+    func nextAutoAssignmentLabel() -> String? {
+        guard let seat = nextAvailableSequentialSeat() else { return nil }
+        return seatLabel(for: seat.team, position: seat.position)
+    }
+
+    func seatLabel(for team: TeamType, position: Int) -> String {
+        switch team {
+        case .prop:
+            if selectedFormat == .ap {
+                return "Gov \(position)"
+            }
+            if position == 4, shouldIncludeReplySpeeches {
+                return "Prop Reply"
+            }
+            return "Prop \(position)"
+        case .opp:
+            if position == 4, shouldIncludeReplySpeeches {
+                return "Opp Reply"
+            }
+            return "Opp \(position)"
+        case .og:
+            return "OG \(position)"
+        case .oo:
+            return "OO \(position)"
+        case .cg:
+            return "CG \(position)"
+        case .co:
+            return "CO \(position)"
+        }
     }
 
     func reorderTeam(_ team: TeamType, from sourceIndex: Int, to destinationIndex: Int) {
