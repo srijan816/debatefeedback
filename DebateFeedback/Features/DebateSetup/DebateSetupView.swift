@@ -182,23 +182,10 @@ struct DebateSetupView: View {
         }
 
         let teacherMatchedSessions = allSessions.filter { session in
-            if let sessionTeacherId = session.teacher?.id, sessionTeacherId == currentTeacher.id {
-                return true
-            }
-
-            guard let sessionTeacherName = session.teacher?.name else {
-                return false
-            }
-
-            return sessionTeacherName.compare(
-                currentTeacher.name,
-                options: [.caseInsensitive, .diacriticInsensitive]
-            ) == .orderedSame
+            session.matches(teacher: currentTeacher)
         }
 
-        let orphanedTeacherSessions = allSessions.filter { session in
-            !session.isGuestMode && session.teacher == nil
-        }
+        let orphanedTeacherSessions = allSessions.filter(\.isRecoverableTeacherSession)
 
         var merged: [DebateSession] = []
         var seen = Set<UUID>()

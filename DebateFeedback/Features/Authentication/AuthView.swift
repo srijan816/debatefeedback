@@ -198,8 +198,19 @@ struct AuthView: View {
         )
         let sessions = (try? modelContext.fetch(descriptor)) ?? []
 
-        for session in sessions where !session.isGuestMode && session.teacher == nil {
+        for session in sessions {
+            if session.matches(teacher: teacher) {
+                session.teacher = teacher
+                session.isGuestMode = false
+                continue
+            }
+
+            guard session.isRecoverableTeacherSession else {
+                continue
+            }
+
             session.teacher = teacher
+            session.isGuestMode = false
         }
     }
 }

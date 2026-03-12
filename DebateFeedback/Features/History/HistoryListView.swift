@@ -29,18 +29,7 @@ struct HistoryListView: View {
         }
 
         return allSessions.filter { session in
-            if let sessionTeacherId = session.teacher?.id, sessionTeacherId == currentTeacher.id {
-                return true
-            }
-
-            guard let sessionTeacherName = session.teacher?.name else {
-                return false
-            }
-
-            return sessionTeacherName.compare(
-                currentTeacher.name,
-                options: [.caseInsensitive, .diacriticInsensitive]
-            ) == .orderedSame
+            session.matches(teacher: currentTeacher) || session.isRecoverableTeacherSession
         }
     }
 
