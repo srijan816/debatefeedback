@@ -18,6 +18,7 @@ struct FeedbackListView: View {
 
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query private var allRecordings: [SpeechRecording]
     @State private var showingCompleteRoundConfirmation = false
 
@@ -26,39 +27,37 @@ struct FeedbackListView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Debate Info Header
-                debateInfoHeader
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 24) {
+                    debateInfoHeader
 
-                // Recordings Grid
-                if recordings.isEmpty {
-                    ContentUnavailableView(
-                        "No Recordings Yet",
-                        systemImage: "mic.slash",
-                        description: Text("Recordings will appear here after the debate")
-                    )
-                } else {
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 16) {
-                        ForEach(recordings, id: \.id) { recording in
-                            NavigationLink(destination: FeedbackDetailView(recording: recording)) {
-                                FeedbackCard(recording: recording)
+                    if recordings.isEmpty {
+                        ContentUnavailableView(
+                            "No Recordings Yet",
+                            systemImage: "mic.slash",
+                            description: Text("Recordings will appear here after the debate")
+                        )
+                    } else {
+                        LazyVGrid(columns: gridColumns(for: geometry.size.width), spacing: 16) {
+                            ForEach(recordings, id: \.id) { recording in
+                                NavigationLink(destination: FeedbackDetailView(recording: recording)) {
+                                    FeedbackCard(recording: recording)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
-                }
 
-                // Summary
-                if !recordings.isEmpty {
-                    summaryStats
+                    if !recordings.isEmpty {
+                        summaryStats
+                    }
                 }
+                .frame(maxWidth: contentMaxWidth(for: geometry.size.width))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical)
             }
-            .padding(.vertical)
         }
         .navigationTitle("Feedback")
         .navigationBarTitleDisplayMode(.large)
@@ -112,6 +111,26 @@ struct FeedbackListView: View {
         }
         .subtleBoundaryEffects(showTopEdge: true, showBottomEdge: true, intensity: 0.06)
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
+    }
+
+    private func usesWideLayout(for width: CGFloat) -> Bool {
+        Constants.isIPad && width >= 900 && horizontalSizeClass == .regular
+    }
+
+    private func contentMaxWidth(for width: CGFloat) -> CGFloat {
+        usesWideLayout(for: width) ? min(width - 64, 1320) : width
+    }
+
+    private func gridColumns(for width: CGFloat) -> [GridItem] {
+        let count: Int
+
+        if usesWideLayout(for: width) {
+            count = width >= 1200 ? 4 : 3
+        } else {
+            count = 2
+        }
+
+        return Array(repeating: GridItem(.flexible(), spacing: 16), count: count)
     }
 
     private func handleDone() {

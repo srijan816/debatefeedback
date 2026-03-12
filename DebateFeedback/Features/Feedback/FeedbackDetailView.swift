@@ -12,6 +12,7 @@ struct FeedbackDetailView: View {
     let recording: SpeechRecording
 
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var feedbackContent: String = ""
     @State private var sections: [FeedbackSectionData] = []
     @State private var isLoading = true
@@ -45,36 +46,42 @@ struct FeedbackDetailView: View {
         let displayModes = availableDisplayModes
         let showTabs = displayModes.count > 1
 
-        return VStack(spacing: 0) {
-            if showTabs {
-                HStack(spacing: 0) {
-                    ForEach(displayModes) { mode in
-                        FeedbackModeTab(
-                            title: mode.rawValue,
-                            isSelected: displayMode == mode,
-                            onSelect: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    displayMode = mode
-                                }
-                                AnalyticsService.shared.logFeedbackTabSwitched(to: mode.rawValue)
-                            }
-                        )
-                    }
-                }
-                .padding(.top)
-                .background(Color(uiColor: .systemBackground))
-            }
+        return GeometryReader { geometry in
+            let isWideLayout = usesWideLayout(for: geometry.size.width)
 
-            Group {
-                switch displayMode {
-                case .document:
-                    documentFeedbackView
-                case .highlights:
-                    highlightsFeedbackView
-                case .training:
-                    trainingConsoleView
-                case .progress:
-                    progressConsoleView
+            VStack(spacing: 0) {
+                if showTabs {
+                    HStack(spacing: 0) {
+                        ForEach(displayModes) { mode in
+                            FeedbackModeTab(
+                                title: mode.rawValue,
+                                isSelected: displayMode == mode,
+                                onSelect: {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        displayMode = mode
+                                    }
+                                    AnalyticsService.shared.logFeedbackTabSwitched(to: mode.rawValue)
+                                }
+                            )
+                        }
+                    }
+                    .frame(maxWidth: feedbackContentMaxWidth(for: geometry.size.width))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top)
+                    .background(Color(uiColor: .systemBackground))
+                }
+
+                Group {
+                    switch displayMode {
+                    case .document:
+                        documentFeedbackView(contentWidth: geometry.size.width, isWideLayout: isWideLayout)
+                    case .highlights:
+                        highlightsFeedbackView(contentWidth: geometry.size.width, isWideLayout: isWideLayout)
+                    case .training:
+                        trainingConsoleView(contentWidth: geometry.size.width, isWideLayout: isWideLayout)
+                    case .progress:
+                        progressConsoleView(contentWidth: geometry.size.width, isWideLayout: isWideLayout)
+                    }
                 }
             }
         }
@@ -173,7 +180,15 @@ struct FeedbackDetailView: View {
         return modes
     }
 
-    private var documentFeedbackView: some View {
+    private func usesWideLayout(for width: CGFloat) -> Bool {
+        Constants.isIPad && width >= 980 && horizontalSizeClass == .regular
+    }
+
+    private func feedbackContentMaxWidth(for width: CGFloat) -> CGFloat {
+        usesWideLayout(for: width) ? min(width - 64, 1360) : width
+    }
+
+    private func documentFeedbackView(contentWidth: CGFloat, isWideLayout: Bool) -> some View {
         Group {
             if let url = resolvedFeedbackDocumentURL {
                 VStack(spacing: 0) {
@@ -185,6 +200,8 @@ struct FeedbackDetailView: View {
                         WebView(url: url, isLoading: $webViewLoading, error: $webViewError)
                     }
                 }
+                .frame(maxWidth: feedbackContentMaxWidth(for: contentWidth))
+                .frame(maxWidth: .infinity)
             } else {
                 ContentUnavailableView(
                     "Document Unavailable",
@@ -245,26 +262,46 @@ struct FeedbackDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var highlightsFeedbackView: some View {
+    private func highlightsFeedbackView(contentWidth: CGFloat, isWideLayout: Bool) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 speakerHeader
 
-                transcriptSection
+                if isWideLayout {
+                    HStack(alignment: .top, spacing: 20) {
+                        transcriptSection
+                            .frame(maxWidth: 420, alignment: .top)
 
-                if isLoading {
-                    loadingView
-                } else if let error = errorMessage {
-                    errorView(error)
+                        Group {
+                            if isLoading {
+                                loadingView
+                            } else if let error = errorMessage {
+                                errorView(error)
+                            } else {
+                                feedbackContentView
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
                 } else {
-                    feedbackContentView
+                    transcriptSection
+
+                    if isLoading {
+                        loadingView
+                    } else if let error = errorMessage {
+                        errorView(error)
+                    } else {
+                        feedbackContentView
+                    }
                 }
             }
+            .frame(maxWidth: feedbackContentMaxWidth(for: contentWidth))
+            .frame(maxWidth: .infinity)
             .padding()
         }
     }
 
-    private var trainingConsoleView: some View {
+    private func trainingConsoleView(contentWidth: CGFloat, isWideLayout: Bool) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 speakerHeader
@@ -277,21 +314,49 @@ struct FeedbackDetailView: View {
                         message: trainingErrorMessage
                     )
                 } else {
-                    trainingSummarySection
-                    if let drill = trainingContent?.drill {
-                        trainingDrillSection(drill)
-                    }
-                    if let ghost = trainingContent?.ghostDebater {
-                        ghostDebaterSection(ghost)
-                    }
-                    if let analysis = comparativeAnalysis {
-                        comparativeAnalysisSection(analysis)
-                    }
-                    if let comparativeErrorMessage {
-                        lightweightErrorCard(
-                            title: "Round Comparison Pending",
-                            message: comparativeErrorMessage
-                        )
+                    if isWideLayout {
+                        HStack(alignment: .top, spacing: 20) {
+                            VStack(spacing: 20) {
+                                trainingSummarySection
+                                if let analysis = comparativeAnalysis {
+                                    comparativeAnalysisSection(analysis)
+                                }
+                                if let comparativeErrorMessage {
+                                    lightweightErrorCard(
+                                        title: "Round Comparison Pending",
+                                        message: comparativeErrorMessage
+                                    )
+                                }
+                            }
+                            .frame(maxWidth: 420, alignment: .top)
+
+                            VStack(spacing: 20) {
+                                if let drill = trainingContent?.drill {
+                                    trainingDrillSection(drill)
+                                }
+                                if let ghost = trainingContent?.ghostDebater {
+                                    ghostDebaterSection(ghost)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        }
+                    } else {
+                        trainingSummarySection
+                        if let drill = trainingContent?.drill {
+                            trainingDrillSection(drill)
+                        }
+                        if let ghost = trainingContent?.ghostDebater {
+                            ghostDebaterSection(ghost)
+                        }
+                        if let analysis = comparativeAnalysis {
+                            comparativeAnalysisSection(analysis)
+                        }
+                        if let comparativeErrorMessage {
+                            lightweightErrorCard(
+                                title: "Round Comparison Pending",
+                                message: comparativeErrorMessage
+                            )
+                        }
                     }
                     if trainingContent?.drill == nil && trainingContent?.ghostDebater == nil && comparativeAnalysis == nil {
                         ContentUnavailableView(
@@ -302,11 +367,13 @@ struct FeedbackDetailView: View {
                     }
                 }
             }
+            .frame(maxWidth: feedbackContentMaxWidth(for: contentWidth))
+            .frame(maxWidth: .infinity)
             .padding()
         }
     }
 
-    private var progressConsoleView: some View {
+    private func progressConsoleView(contentWidth: CGFloat, isWideLayout: Bool) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 speakerHeader
@@ -319,12 +386,31 @@ struct FeedbackDetailView: View {
                         message: progressErrorMessage
                     )
                 } else {
-                    progressOverviewSection
-                    if let benchmarks {
-                        benchmarksSection(benchmarks)
-                    }
-                    if let portfolio {
-                        portfolioSection(portfolio)
+                    if isWideLayout {
+                        HStack(alignment: .top, spacing: 20) {
+                            VStack(spacing: 20) {
+                                progressOverviewSection
+                                if let benchmarks {
+                                    benchmarksSection(benchmarks)
+                                }
+                            }
+                            .frame(maxWidth: 420, alignment: .top)
+
+                            VStack(spacing: 20) {
+                                if let portfolio {
+                                    portfolioSection(portfolio)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        }
+                    } else {
+                        progressOverviewSection
+                        if let benchmarks {
+                            benchmarksSection(benchmarks)
+                        }
+                        if let portfolio {
+                            portfolioSection(portfolio)
+                        }
                     }
                     if portfolio == nil && benchmarks == nil {
                         ContentUnavailableView(
@@ -335,6 +421,8 @@ struct FeedbackDetailView: View {
                     }
                 }
             }
+            .frame(maxWidth: feedbackContentMaxWidth(for: contentWidth))
+            .frame(maxWidth: .infinity)
             .padding()
         }
     }

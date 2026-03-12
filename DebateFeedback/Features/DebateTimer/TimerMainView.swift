@@ -13,6 +13,7 @@ struct TimerMainView: View {
 
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var viewModel: TimerViewModel?
     @State private var showingFeedbackSheet = false
@@ -42,34 +43,53 @@ struct TimerMainView: View {
 
     @ViewBuilder
     private func timerContent(viewModel: TimerViewModel) -> some View {
-        ZStack {
-            // Light background with subtle glitters
-            Constants.Colors.backgroundLight
-                .ignoresSafeArea()
+        GeometryReader { geometry in
+            let isWideLayout = usesWideLayout(for: geometry.size.width)
 
-            SubtleGlitterView()
-                .ignoresSafeArea()
+            ZStack {
+                // Light background with subtle glitters
+                Constants.Colors.backgroundLight
+                    .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Motion Header
-                motionHeader(viewModel: viewModel)
+                SubtleGlitterView()
+                    .ignoresSafeArea()
 
-                // Main Timer Display
-                Spacer()
+                VStack(spacing: 0) {
+                    motionHeader(viewModel: viewModel, isWideLayout: isWideLayout)
 
-                timerDisplay(viewModel: viewModel)
+                    if isWideLayout {
+                        HStack(alignment: .top, spacing: 24) {
+                            VStack(spacing: 24) {
+                                Spacer(minLength: 0)
+                                timerDisplay(viewModel: viewModel)
+                                controlButtons(viewModel: viewModel)
+                                speakerNavigation(viewModel: viewModel, isWideLayout: true)
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 12)
 
-                Spacer()
-
-                // Control Buttons
-                controlButtons(viewModel: viewModel)
-
-                // Navigation
-                speakerNavigation(viewModel: viewModel)
-
-                // Recordings List (if any completed)
-                if !viewModel.recordings.isEmpty {
-                    recordingsList(viewModel: viewModel)
+                            if !viewModel.recordings.isEmpty {
+                                recordingsList(viewModel: viewModel, isWideLayout: true)
+                                    .frame(width: min(max(geometry.size.width * 0.28, 280), 360))
+                            }
+                        }
+                        .frame(maxWidth: min(geometry.size.width - 64, 1360))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 24)
+                    } else {
+                        VStack(spacing: 0) {
+                            Spacer()
+                            timerDisplay(viewModel: viewModel)
+                            Spacer()
+                            controlButtons(viewModel: viewModel)
+                            speakerNavigation(viewModel: viewModel, isWideLayout: false)
+                            if !viewModel.recordings.isEmpty {
+                                recordingsList(viewModel: viewModel, isWideLayout: false)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -128,18 +148,23 @@ struct TimerMainView: View {
         }
     }
 
+    private func usesWideLayout(for width: CGFloat) -> Bool {
+        Constants.isIPad && width >= 980 && horizontalSizeClass == .regular
+    }
+
     // MARK: - Motion Header
 
-    private func motionHeader(viewModel: TimerViewModel) -> some View {
+    private func motionHeader(viewModel: TimerViewModel, isWideLayout: Bool) -> some View {
         VStack(spacing: 12) {
             // Motion text
             Text(debateSession.motion)
-                .font(.body)
+                .font(isWideLayout ? .title3 : .body)
                 .fontWeight(.medium)
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(isWideLayout ? .leading : .center)
                 .foregroundColor(Constants.Colors.textPrimary)
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
+                .frame(maxWidth: .infinity, alignment: isWideLayout ? .leading : .center)
 
             // Current Speaker Card
             HStack(spacing: 16) {
@@ -170,7 +195,8 @@ struct TimerMainView: View {
             .padding(16)
             .softCard(backgroundColor: Constants.Colors.cardBackground, borderColor: Constants.Colors.textTertiary.opacity(0.2), cornerRadius: 16)
         }
-        .padding(.horizontal, 20)
+        .frame(maxWidth: isWideLayout ? 1360 : .infinity, alignment: .leading)
+        .padding(.horizontal, isWideLayout ? 32 : 20)
         .padding(.bottom, 16)
         .background(Constants.Colors.backgroundSecondary)
     }
@@ -394,7 +420,7 @@ TimerTextView(viewModel: viewModel)
 
     // MARK: - Speaker Navigation
 
-    private func speakerNavigation(viewModel: TimerViewModel) -> some View {
+    private func speakerNavigation(viewModel: TimerViewModel, isWideLayout: Bool) -> some View {
         HStack(spacing: 16) {
             Button {
                 HapticManager.shared.light()
@@ -445,14 +471,17 @@ TimerTextView(viewModel: viewModel)
             .accessibilityLabel("Next speaker button")
             .accessibilityHint(viewModel.canGoForward ? "Go to next speaker" : "No next speaker available")
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, isWideLayout ? 0 : 20)
         .padding(.vertical, 16)
-        .background(Constants.Colors.backgroundSecondary)
+        .background(
+            isWideLayout ? Constants.Colors.cardBackground : Constants.Colors.backgroundSecondary
+        )
+        .cornerRadius(isWideLayout ? 18 : 0)
     }
 
     // MARK: - Recordings List
 
-    private func recordingsList(viewModel: TimerViewModel) -> some View {
+    private func recordingsList(viewModel: TimerViewModel, isWideLayout: Bool) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -475,19 +504,31 @@ TimerTextView(viewModel: viewModel)
                 }
                 .foregroundColor(Constants.Colors.textSecondary)
             }
-            .padding(.horizontal)
+            .padding(.horizontal, isWideLayout ? 0 : 16)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    ForEach(viewModel.recordings, id: \.id) { recording in
-                        RecordingCard(recording: recording, viewModel: viewModel)
+            if isWideLayout {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(viewModel.recordings, id: \.id) { recording in
+                            RecordingCard(recording: recording, viewModel: viewModel, isWideLayout: true)
+                        }
                     }
                 }
-                .padding(.horizontal)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(viewModel.recordings, id: \.id) { recording in
+                            RecordingCard(recording: recording, viewModel: viewModel, isWideLayout: false)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
             }
         }
         .padding(.vertical, 16)
-        .background(Constants.Colors.backgroundSecondary)
+        .padding(.horizontal, isWideLayout ? 18 : 0)
+        .background(isWideLayout ? Constants.Colors.cardBackground : Constants.Colors.backgroundSecondary)
+        .cornerRadius(isWideLayout ? 20 : 0)
     }
 }
 
@@ -496,6 +537,7 @@ TimerTextView(viewModel: viewModel)
 struct RecordingCard: View {
     let recording: SpeechRecording
     @Bindable var viewModel: TimerViewModel
+    var isWideLayout: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -568,7 +610,8 @@ struct RecordingCard: View {
             }
         }
         .padding(16)
-        .frame(width: 170)
+        .frame(width: isWideLayout ? nil : 170)
+        .frame(maxWidth: .infinity)
         .frame(minHeight: 130)
         .softCard(
             backgroundColor: Constants.Colors.cardBackground,
