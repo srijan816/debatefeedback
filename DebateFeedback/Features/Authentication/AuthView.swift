@@ -5,9 +5,11 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct AuthView: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel = AuthViewModel()
 
     var body: some View {
@@ -148,11 +150,56 @@ struct AuthView: View {
             if authenticated {
                 HapticManager.shared.success()
                 if let teacher = viewModel.authenticatedTeacher {
-                    coordinator.loginAsTeacher(teacher)
+                    coordinator.loginAsTeacher(persistTeacher(teacher))
                 } else {
                     coordinator.loginAsGuest()
                 }
             }
+        }
+    }
+
+    private func persistTeacher(_ teacher: Teacher) -> Teacher {
+        let descriptor = FetchDescriptor<Teacher>()
+        let existingTeachers = (try? modelContext.fetch(descriptor)) ?? []
+
+        let storedTeacher: Teacher
+        if let match = existingTeachers.first(where: {
+            $0.id == teacher.id ||
+            $0.name.compare(
+                teacher.name,
+                options: [.caseInsensitive, .diacriticInsensitive]
+            ) == .orderedSame
+        }) {
+            match.name = teacher.name
+            match.deviceId = teacher.deviceId
+            match.authToken = teacher.authToken
+            match.isAdmin = teacher.isAdmin
+            storedTeacher = match
+        } else {
+            let newTeacher = Teacher(
+                id: teacher.id,
+                name: teacher.name,
+                deviceId: teacher.deviceId,
+                authToken: teacher.authToken,
+                isAdmin: teacher.isAdmin
+            )
+            modelContext.insert(newTeacher)
+            storedTeacher = newTeacher
+        }
+
+        claimUnownedTeacherSessions(for: storedTeacher)
+        try? modelContext.save()
+        return storedTeacher
+    }
+
+    private func claimUnownedTeacherSessions(for teacher: Teacher) {
+        let descriptor = FetchDescriptor<DebateSession>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        let sessions = (try? modelContext.fetch(descriptor)) ?? []
+
+        for session in sessions where !session.isGuestMode && session.teacher == nil {
+            session.teacher = teacher
         }
     }
 }

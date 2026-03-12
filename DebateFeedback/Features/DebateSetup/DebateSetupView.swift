@@ -98,6 +98,16 @@ struct DebateSetupView: View {
                     .foregroundColor(Constants.Colors.softPink)
                 }
 
+                if coordinator.canAccessHistory {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            coordinator.viewHistory()
+                        } label: {
+                            Label("Past Sessions", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                        }
+                    }
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if coordinator.currentDebateSession != nil {
                         Menu {
@@ -171,7 +181,7 @@ struct DebateSetupView: View {
             return []
         }
 
-        return allSessions.filter { session in
+        let teacherMatchedSessions = allSessions.filter { session in
             if let sessionTeacherId = session.teacher?.id, sessionTeacherId == currentTeacher.id {
                 return true
             }
@@ -185,6 +195,25 @@ struct DebateSetupView: View {
                 options: [.caseInsensitive, .diacriticInsensitive]
             ) == .orderedSame
         }
+
+        let orphanedTeacherSessions = allSessions.filter { session in
+            !session.isGuestMode && session.teacher == nil
+        }
+
+        var merged: [DebateSession] = []
+        var seen = Set<UUID>()
+
+        for session in teacherMatchedSessions + orphanedTeacherSessions {
+            if seen.insert(session.id).inserted {
+                merged.append(session)
+            }
+        }
+
+        return merged
+    }
+
+    private var recentSessionsForDisplay: [DebateSession] {
+        Array(teacherRecentSessions.prefix(6))
     }
 
     // MARK: - State Restoration
@@ -438,7 +467,7 @@ struct DebateSetupView: View {
                 subtitle: "Lock the motion, format, and schedule context before you place speakers."
             )
 
-            if !teacherRecentSessions.isEmpty {
+            if coordinator.canAccessHistory {
                 recentSessionsCard
             }
 
@@ -495,42 +524,65 @@ struct DebateSetupView: View {
                 .foregroundColor(Constants.Colors.primaryBlue)
             }
 
-            VStack(spacing: 10) {
-                ForEach(Array(teacherRecentSessions.prefix(3)), id: \.id) { session in
-                    Button {
-                        coordinator.navigateTo(.feedback(debateSession: session))
-                    } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(session.motion)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundColor(Constants.Colors.textPrimary)
-                                    .lineLimit(2)
+            if recentSessionsForDisplay.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "clock.badge.questionmark")
+                        .foregroundColor(Constants.Colors.textSecondary)
 
-                                HStack(spacing: 10) {
-                                    Label(session.createdAt.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar")
-                                    Label("\(session.speechRecordings?.count ?? 0) recordings", systemImage: "waveform")
-                                    if let classId = session.classId, !classId.isEmpty {
-                                        Label(classId, systemImage: "person.3")
-                                    }
-                                }
+                    Text("No saved teacher sessions yet. Once you record a round, it will show up here.")
+                        .font(.subheadline)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(Constants.Colors.backgroundSecondary)
+                .cornerRadius(16)
+            } else {
+                Menu {
+                    ForEach(recentSessionsForDisplay, id: \.id) { session in
+                        Button(sessionMenuLabel(for: session)) {
+                            coordinator.navigateTo(.feedback(debateSession: session))
+                        }
+                    }
+
+                    Divider()
+
+                    Button("Open Full History") {
+                        coordinator.viewHistory()
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                            .foregroundColor(Constants.Colors.primaryBlue)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Open a past session")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(Constants.Colors.textPrimary)
+
+                            Text("\(recentSessionsForDisplay.count) recent teacher sessions available")
                                 .font(.caption)
                                 .foregroundColor(Constants.Colors.textSecondary)
-                                .lineLimit(1)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                                .foregroundColor(Constants.Colors.textSecondary)
                         }
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Constants.Colors.backgroundSecondary)
-                        .cornerRadius(16)
+
+                        Spacer()
+
+                        Text("Last 6")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Constants.Colors.primaryBlue)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Constants.Colors.primaryBlue.opacity(0.12))
+                            .cornerRadius(999)
+
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(Constants.Colors.textSecondary)
                     }
-                    .buttonStyle(.plain)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Constants.Colors.backgroundSecondary)
+                    .cornerRadius(16)
                 }
             }
         }
@@ -540,6 +592,14 @@ struct DebateSetupView: View {
             borderColor: Constants.Colors.primaryBlue.opacity(0.16),
             cornerRadius: 20
         )
+    }
+
+    private func sessionMenuLabel(for session: DebateSession) -> String {
+        let timestamp = session.createdAt.formatted(date: .abbreviated, time: .shortened)
+        if let classId = session.classId, !classId.isEmpty {
+            return "\(timestamp) • \(classId)"
+        }
+        return timestamp
     }
 
     private var classSelectionSection: some View {
