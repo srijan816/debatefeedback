@@ -18,25 +18,53 @@ struct HistoryListView: View {
     @State private var searchText = ""
     @State private var selectedFormat: DebateFormat?
     @State private var selectedLevel: StudentLevel?
+    @State private var selectedSectionId: String?
     @State private var showFilters = false
     @State private var sessionToDelete: DebateSession?
     @State private var showDeleteConfirmation = false
 
+    private var teacherScopedSessions: [DebateSession] {
+        guard let currentTeacher = coordinator.currentTeacher else {
+            return []
+        }
+
+        return allSessions.filter { session in
+            if let sessionTeacherId = session.teacher?.id, sessionTeacherId == currentTeacher.id {
+                return true
+            }
+
+            guard let sessionTeacherName = session.teacher?.name else {
+                return false
+            }
+
+            return sessionTeacherName.compare(
+                currentTeacher.name,
+                options: [.caseInsensitive, .diacriticInsensitive]
+            ) == .orderedSame
+        }
+    }
+
+    private var availableSections: [String] {
+        Array(Set(teacherScopedSessions.compactMap(\.classId)))
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
     private var filteredSessions: [DebateSession] {
-        allSessions.filter { session in
+        teacherScopedSessions.filter { session in
             let matchesSearch = searchText.isEmpty || session.motion.localizedCaseInsensitiveContains(searchText) ||
                 (session.students?.contains(where: { $0.name.localizedCaseInsensitiveContains(searchText) }) ?? false)
 
             let matchesFormat = selectedFormat == nil || session.format == selectedFormat
             let matchesLevel = selectedLevel == nil || session.studentLevel == selectedLevel
+            let matchesSection = selectedSectionId == nil || session.classId == selectedSectionId
 
-            return matchesSearch && matchesFormat && matchesLevel
+            return matchesSearch && matchesFormat && matchesLevel && matchesSection
         }
     }
 
     var body: some View {
         Group {
-            if allSessions.isEmpty {
+            if teacherScopedSessions.isEmpty {
                 emptyState
             } else {
                 historyList
@@ -73,7 +101,7 @@ struct HistoryListView: View {
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
         .onAppear {
             // Track history viewed
-            AnalyticsService.shared.logHistoryViewed(totalDebates: allSessions.count)
+            AnalyticsService.shared.logHistoryViewed(totalDebates: teacherScopedSessions.count)
         }
         .onChange(of: searchText) { oldValue, newValue in
             // Track search performed (only when non-empty)
@@ -83,13 +111,18 @@ struct HistoryListView: View {
         }
         .onChange(of: selectedFormat) { _, _ in
             // Track filter applied
-            if selectedFormat != nil || selectedLevel != nil {
+            if selectedFormat != nil || selectedLevel != nil || selectedSectionId != nil {
                 AnalyticsService.shared.logHistoryFilterApplied(format: selectedFormat, studentLevel: selectedLevel)
             }
         }
         .onChange(of: selectedLevel) { _, _ in
             // Track filter applied
-            if selectedFormat != nil || selectedLevel != nil {
+            if selectedFormat != nil || selectedLevel != nil || selectedSectionId != nil {
+                AnalyticsService.shared.logHistoryFilterApplied(format: selectedFormat, studentLevel: selectedLevel)
+            }
+        }
+        .onChange(of: selectedSectionId) { _, _ in
+            if selectedFormat != nil || selectedLevel != nil || selectedSectionId != nil {
                 AnalyticsService.shared.logHistoryFilterApplied(format: selectedFormat, studentLevel: selectedLevel)
             }
         }
@@ -100,7 +133,7 @@ struct HistoryListView: View {
     private var historyList: some View {
         List {
             // Summary stats
-            if !allSessions.isEmpty {
+            if !teacherScopedSessions.isEmpty {
                 Section {
                     summaryStats
                 }
@@ -109,12 +142,12 @@ struct HistoryListView: View {
             }
 
             // Filtered results info
-            if selectedFormat != nil || selectedLevel != nil {
+            if selectedFormat != nil || selectedLevel != nil || selectedSectionId != nil {
                 Section {
                     HStack {
                         Image(systemName: "line.3.horizontal.decrease.circle.fill")
                             .foregroundColor(Constants.Colors.primaryBlue)
-                        Text("Showing \(filteredSessions.count) of \(allSessions.count) debates")
+                        Text("Showing \(filteredSessions.count) of \(teacherScopedSessions.count) debates")
                             .font(.subheadline)
                             .foregroundColor(Constants.Colors.textSecondary)
                         Spacer()
@@ -172,7 +205,7 @@ struct HistoryListView: View {
                     .fontWeight(.bold)
                     .foregroundColor(Constants.Colors.textPrimary)
 
-                Text("Your past debates will appear here.\nCreate your first debate to get started!")
+                Text("Your past debates and section history will appear here.\nCreate your first debate to get started!")
                     .font(.body)
                     .foregroundColor(Constants.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -233,7 +266,7 @@ struct HistoryListView: View {
             HStack(spacing: 20) {
                 StatBox(
                     title: "Total Debates",
-                    value: "\(allSessions.count)",
+                    value: "\(teacherScopedSessions.count)",
                     icon: "graduationcap.fill",
                     color: Constants.Colors.primaryBlue
                 )
@@ -251,6 +284,17 @@ struct HistoryListView: View {
                     icon: "mic.fill",
                     color: Constants.Colors.softPink
                 )
+            }
+
+            if !availableSections.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "building.columns")
+                        .foregroundColor(Constants.Colors.primaryBlue)
+                    Text("\(availableSections.count) section\(availableSections.count == 1 ? "" : "s") with history")
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                    Spacer()
+                }
             }
         }
         .padding()
@@ -288,6 +332,19 @@ struct HistoryListView: View {
                     .labelsHidden()
                 }
 
+                if !availableSections.isEmpty {
+                    Section("Section") {
+                        Picker("Section", selection: $selectedSectionId) {
+                            Text("All Sections").tag(nil as String?)
+                            ForEach(availableSections, id: \.self) { sectionId in
+                                Text(sectionId).tag(Optional(sectionId))
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
+                }
+
                 Section {
                     Button("Clear All Filters") {
                         HapticManager.shared.light()
@@ -317,7 +374,7 @@ struct HistoryListView: View {
 
     private var totalUniqueStudents: Int {
         var studentNames = Set<String>()
-        for session in allSessions {
+        for session in teacherScopedSessions {
             if let students = session.students {
                 for student in students {
                     studentNames.insert(student.name)
@@ -328,7 +385,7 @@ struct HistoryListView: View {
     }
 
     private var totalRecordings: Int {
-        allSessions.reduce(0) { $0 + ($1.speechRecordings?.count ?? 0) }
+        teacherScopedSessions.reduce(0) { $0 + ($1.speechRecordings?.count ?? 0) }
     }
 
     // MARK: - Actions
@@ -336,6 +393,7 @@ struct HistoryListView: View {
     private func clearFilters() {
         selectedFormat = nil
         selectedLevel = nil
+        selectedSectionId = nil
     }
 
     private func deleteSessions(at offsets: IndexSet) {
@@ -415,6 +473,21 @@ struct HistoryCard: View {
                 Label(formattedDate(session.createdAt), systemImage: "calendar")
                     .font(.caption)
                     .foregroundColor(Constants.Colors.textSecondary)
+            }
+
+            if let classId = session.classId, !classId.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "building.columns")
+                        .font(.caption2)
+                    Text(classId)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(Constants.Colors.primaryBlue)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Constants.Colors.backgroundSecondary)
+                .cornerRadius(10)
             }
 
             // Stats

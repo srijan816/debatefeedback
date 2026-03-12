@@ -26,6 +26,7 @@ final class TimerService {
     private var bellPlayers: [AVAudioPlayer] = []
     private var bellSoundURL: URL?
     private let bellGap: TimeInterval = 0.18
+    private let bellVolume: Float = 1.0
 
     private(set) var speechDuration: TimeInterval
     private var bellsScheduled: [TimeInterval] = []
@@ -156,15 +157,17 @@ final class TimerService {
     // MARK: - Bell Audio
 
     private func setupBellPlayers() {
-        if let url = Bundle.main.url(forResource: "bell", withExtension: "wav") {
+        if let url = Bundle.main.url(forResource: "bell", withExtension: "mp3")
+            ?? Bundle.main.url(forResource: "bell", withExtension: "wav") {
             bellSoundURL = url
             // Prime the audio system with a single player
             if let warmupPlayer = try? AVAudioPlayer(contentsOf: url) {
+                warmupPlayer.volume = bellVolume
                 warmupPlayer.prepareToPlay()
                 bellPlayers.append(warmupPlayer)
             }
         } else {
-            print("Warning: bell.wav not found in bundle. Bell sounds will be silent.")
+            print("Warning: bell.mp3 not found in bundle. Bell sounds will be silent.")
         }
     }
 
@@ -188,6 +191,7 @@ final class TimerService {
 
                 do {
                     let player = try AVAudioPlayer(contentsOf: url)
+                    player.volume = bellVolume
                     player.prepareToPlay()
                     player.play()
                     self.bellPlayers.append(player)
