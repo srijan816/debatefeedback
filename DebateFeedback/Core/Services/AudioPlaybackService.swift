@@ -11,6 +11,7 @@ import Foundation
 final class AudioPlaybackService: NSObject {
     private var audioPlayer: AVAudioPlayer?
     private(set) var currentFileURL: URL?
+    private var cachedRemoteFiles: [URL: URL] = [:]
 
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
@@ -118,6 +119,36 @@ final class AudioPlaybackService: NSObject {
 
         isPlaying = true
         startProgressTimer()
+    }
+
+    func preparePlayableURL(for sourceURL: URL) async throws -> URL {
+        if sourceURL.isFileURL {
+            return sourceURL
+        }
+
+        if let cachedURL = cachedRemoteFiles[sourceURL],
+           FileManager.default.fileExists(atPath: cachedURL.path) {
+            return cachedURL
+        }
+
+        let (downloadedURL, response) = try await URLSession.shared.download(from: sourceURL)
+        if let httpResponse = response as? HTTPURLResponse,
+           !(200...299).contains(httpResponse.statusCode) {
+            throw PlaybackError.fileNotFound
+        }
+
+        let fileExtension = sourceURL.pathExtension.isEmpty ? "m4a" : sourceURL.pathExtension
+        let destinationURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("debatefeedback-playback-\(UUID().uuidString)")
+            .appendingPathExtension(fileExtension)
+
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try? FileManager.default.removeItem(at: destinationURL)
+        }
+
+        try FileManager.default.moveItem(at: downloadedURL, to: destinationURL)
+        cachedRemoteFiles[sourceURL] = destinationURL
+        return destinationURL
     }
 
     // MARK: - Progress Timer

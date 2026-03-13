@@ -1304,6 +1304,13 @@ struct FeedbackDetailView: View {
 
 
     private func playMoment(_ moment: PlayableMoment) {
+        Task {
+            await playMomentAsync(moment)
+        }
+    }
+
+    @MainActor
+    private func playMomentAsync(_ moment: PlayableMoment) async {
         // Track playable moment clicked (KEY METRIC!)
         let allMoments = sections.flatMap { $0.playableMoments }
         if let momentIndex = allMoments.firstIndex(where: { $0.id == moment.id }) {
@@ -1326,7 +1333,7 @@ struct FeedbackDetailView: View {
         print("🌐 remoteAudioUrl: \(remoteAudioUrl?.absoluteString ?? "❌ NIL - backend didn't send audio_url")")
         
         // 2. Determine which URL to use (Local > Remote)
-        guard let playURL = localURL ?? remoteAudioUrl else {
+        guard let sourceURL = localURL ?? remoteAudioUrl else {
             let diagnosticError = """
             ❌ PLAYBACK FAILED - NO AUDIO SOURCE
             • Local file not found at: \(recording.localFilePath)
@@ -1338,11 +1345,12 @@ struct FeedbackDetailView: View {
             playbackErrorMessage = "Audio unavailable. Local file missing, backend didn't provide URL."
             return
         }
-        
-        print("✅ Using playURL: \(playURL.path)")
-        print("==============================================")
 
         do {
+            let playURL = try await playbackService.preparePlayableURL(for: sourceURL)
+            print("✅ Using playURL: \(playURL.path)")
+            print("==============================================")
+
             if activeMomentID == moment.id {
                 print("ℹ️ Toggling playback for active moment")
                 if playbackService.isPlaying {
