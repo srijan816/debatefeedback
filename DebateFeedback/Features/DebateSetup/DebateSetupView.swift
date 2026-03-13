@@ -160,6 +160,7 @@ struct DebateSetupView: View {
             type: viewModel.toastType
         )
         .task {
+            guard coordinator.currentDebateSession == nil else { return }
             await viewModel.loadScheduleIfNeeded(for: coordinator.currentTeacher)
         }
     }
@@ -241,6 +242,41 @@ struct DebateSetupView: View {
 
         // Go to team assignment step
         viewModel.currentStep = .teamAssignment
+    }
+
+    private func persistCurrentSetupIntoActiveSession() {
+        guard let session = coordinator.currentDebateSession else { return }
+
+        session.motion = viewModel.motion
+        session.format = viewModel.selectedFormat
+        session.studentLevel = viewModel.studentLevel
+        session.speechTimeSeconds = viewModel.speechTimeSeconds
+        session.replyTimeSeconds = viewModel.shouldIncludeReplySpeeches ? viewModel.replyTimeSeconds : nil
+        session.classId = viewModel.selectedClassId
+        session.scheduleId = viewModel.selectedScheduleId
+        session.students = viewModel.students
+
+        var composition = TeamComposition()
+        switch viewModel.selectedFormat {
+        case .wsdc, .australs:
+            composition.prop = viewModel.propTeam.map { $0.id.uuidString }
+            composition.opp = viewModel.oppTeam.map { $0.id.uuidString }
+            if viewModel.shouldIncludeReplySpeeches {
+                composition.propReply = viewModel.resolvedReplySpeakerId(for: .prop)?.uuidString
+                composition.oppReply = viewModel.resolvedReplySpeakerId(for: .opp)?.uuidString
+            }
+        case .bp:
+            composition.og = viewModel.ogTeam.map { $0.id.uuidString }
+            composition.oo = viewModel.ooTeam.map { $0.id.uuidString }
+            composition.cg = viewModel.cgTeam.map { $0.id.uuidString }
+            composition.co = viewModel.coTeam.map { $0.id.uuidString }
+        case .ap:
+            composition.prop = viewModel.propTeam.map { $0.id.uuidString }
+            composition.opp = viewModel.oppTeam.map { $0.id.uuidString }
+        }
+
+        session.teamComposition = composition
+        try? modelContext.save()
     }
 
     // MARK: - Progress Bar
@@ -1839,6 +1875,7 @@ struct DebateSetupView: View {
 
     private func resumeCurrentRound() {
         guard let session = coordinator.currentDebateSession else { return }
+        persistCurrentSetupIntoActiveSession()
         coordinator.startDebate(session: session)
     }
 
