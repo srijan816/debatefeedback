@@ -251,7 +251,7 @@ TimerTextView(viewModel: viewModel)
                             .frame(height: 10)
 
                         Capsule()
-                            .fill(viewModel.isOvertime ? Color.red : Constants.Colors.primaryBlue)
+                            .fill(Constants.Colors.primaryBlue)
                             .frame(width: geometry.size.width * viewModel.progressPercentage, height: 10)
                     }
                 }
@@ -261,21 +261,6 @@ TimerTextView(viewModel: viewModel)
             }
             .padding(24)
             .softCard(backgroundColor: Constants.Colors.cardBackground, borderColor: nil, cornerRadius: 20)
-
-            // Recording indicator
-            if viewModel.isRecording {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(Constants.Colors.recordingActive)
-                        .frame(width: 12, height: 12)
-                        .opacity(0.8)
-                        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: viewModel.isRecording)
-
-                    Text("Recording")
-                        .font(.subheadline)
-                        .foregroundColor(Constants.Colors.textPrimary)
-                }
-            }
         }
     }
 
@@ -380,7 +365,7 @@ TimerTextView(viewModel: viewModel)
                     HStack(spacing: 12) {
                         Image(systemName: "stop.fill")
                             .font(.title2)
-                        Text("Stop Recording")
+                        Text("Stop")
                             .fontWeight(.bold)
                     }
                     .frame(maxWidth: .infinity)
@@ -388,7 +373,7 @@ TimerTextView(viewModel: viewModel)
                 }
                 .gradientButtonStyle(
                     gradient: LinearGradient(
-                        colors: [Color.red.opacity(0.9), Color.red.opacity(0.7)],
+                        colors: [Constants.Colors.mascotNavy, Constants.Colors.primaryBlueDark],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -403,7 +388,7 @@ TimerTextView(viewModel: viewModel)
                     HStack(spacing: 12) {
                         Image(systemName: "play.fill")
                             .font(.title2)
-                        Text(viewModel.currentSpeakerHasRecording ? "Append Recording" : "Start Recording")
+                        Text(viewModel.currentSpeakerHasRecording ? "Append" : "Start")
                             .fontWeight(.bold)
                     }
                     .frame(maxWidth: .infinity)
