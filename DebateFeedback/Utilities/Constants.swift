@@ -243,6 +243,7 @@ enum Constants {
         static let isGuestMode = "com.debatefeedback.isGuestMode"
         static let hasShownOnboarding = "com.debatefeedback.hasShownOnboarding"
         static let themePreference = "com.debatefeedback.themePreference"
+        static let srijanModelOverrides = "com.debatefeedback.srijanModelOverrides"
     }
 
     // MARK: - File Management

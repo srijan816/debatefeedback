@@ -759,6 +759,7 @@ struct CreateDebateRequest: Codable {
     let classId: String?
     let scheduleId: String?
     let classSessionId: String?
+    let llmModelOverrides: [String: String]?
 
     enum CodingKeys: String, CodingKey {
         case motion, format, teams
@@ -768,6 +769,7 @@ struct CreateDebateRequest: Codable {
         case classId = "class_id"
         case scheduleId = "schedule_id"
         case classSessionId = "class_session_id"
+        case llmModelOverrides = "llm_model_overrides"
     }
 }
 

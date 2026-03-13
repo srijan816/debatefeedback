@@ -25,6 +25,7 @@ struct DebateSetupView: View {
     @State private var isRosterExpanded = true
     @State private var showingCompleteRoundConfirmation = false
     @State private var showingWheelOfDoom = false
+    @State private var isModelRoutingExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -510,6 +511,10 @@ struct DebateSetupView: View {
                 subtitle: "Lock the motion, format, and schedule context before you place speakers."
             )
 
+            if showsModelRoutingCard {
+                modelRoutingCard
+            }
+
             if coordinator.canAccessHistory {
                 recentSessionsCard
             }
@@ -543,6 +548,110 @@ struct DebateSetupView: View {
                 }
             }
         }
+    }
+
+    private var showsModelRoutingCard: Bool {
+        viewModel.shouldShowModelRouting(for: coordinator.currentTeacher)
+    }
+
+    private var modelRoutingCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Model routing")
+                        .font(.headline)
+                        .foregroundColor(Constants.Colors.textPrimary)
+
+                    Text("Srijan can route each pipeline stage to a specific model before the round starts.")
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+
+                Spacer()
+
+                Menu {
+                    ForEach(viewModel.supportedModels, id: \.self) { model in
+                        Button(model) {
+                            viewModel.applyModelToAllTasks(model)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wand.and.stars")
+                        Text("Apply to all")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Constants.Colors.primaryBlue)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Constants.Colors.primaryBlue.opacity(0.12))
+                    .cornerRadius(999)
+                }
+                .buttonStyle(.plain)
+            }
+
+            DisclosureGroup(isExpanded: $isModelRoutingExpanded) {
+                VStack(spacing: 12) {
+                    ForEach(viewModel.modelTaskSections) { task in
+                        Menu {
+                            ForEach(viewModel.supportedModels, id: \.self) { model in
+                                Button(model) {
+                                    viewModel.setSelectedModel(model, for: task.id)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(task.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(Constants.Colors.textPrimary)
+                                    Text(task.subtitle)
+                                        .font(.caption)
+                                        .foregroundColor(Constants.Colors.textSecondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer(minLength: 12)
+
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text(viewModel.selectedModel(for: task.id))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundColor(Constants.Colors.primaryBlue)
+                                        .multilineTextAlignment(.trailing)
+                                        .lineLimit(2)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundColor(Constants.Colors.textSecondary)
+                                }
+                            }
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Constants.Colors.backgroundSecondary)
+                            .cornerRadius(16)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 12)
+            } label: {
+                HStack {
+                    Text(isModelRoutingExpanded ? "Hide per-task controls" : "Show per-task controls")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Constants.Colors.textPrimary)
+                    Spacer()
+                }
+            }
+
+            Text("These choices are stored with the debate so feedback, playable moments, and training tools use the same routing later.")
+                .font(.caption)
+                .foregroundColor(Constants.Colors.textSecondary)
+        }
+        .padding(18)
+        .softCard(
+            backgroundColor: Constants.Colors.cardBackground,
+            borderColor: Constants.Colors.primaryBlue.opacity(0.16),
+            cornerRadius: 20
+        )
     }
 
     private var recentSessionsCard: some View {

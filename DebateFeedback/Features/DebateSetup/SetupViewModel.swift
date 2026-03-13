@@ -55,12 +55,43 @@ final class SetupViewModel {
     var availableClasses: [ScheduleResponse.ClassInfo] = []
     var availableAlternatives: [ScheduleAlternative] = []
     var hasScheduleDefaults = false
+    var selectedModelOverrides: [String: String]
 
     struct ClassPickerOption: Identifiable, Hashable {
         let id: String
         let title: String
         let subtitle: String?
     }
+
+    struct ModelTaskOption: Identifiable, Hashable {
+        let id: String
+        let title: String
+        let subtitle: String
+    }
+
+    static let supportedModelOptions: [String] = [
+        "x-ai/grok-4.20-beta",
+        "openai/gpt-5.4",
+        "google/gemini-3.1-flash-lite-preview",
+        "qwen/qwen3.5-122b-a10b",
+        "google/gemini-3.1-pro-preview",
+        "anthropic/claude-sonnet-4.6",
+        "qwen/qwen3.5-397b-a17b",
+        "qwen/qwen3-max-thinking"
+    ]
+
+    static let modelTaskOptions: [ModelTaskOption] = [
+        .init(id: "evidence_extraction", title: "Evidence Extraction", subtitle: "Fast structural scan before scoring."),
+        .init(id: "argument_map", title: "Argument Map", subtitle: "Structural speech map and unit boundaries."),
+        .init(id: "rubric_scoring", title: "Rubric Scoring", subtitle: "Numeric scoring and rubric justifications."),
+        .init(id: "teacher_comments", title: "Teacher Comments", subtitle: "Main coaching voice and written feedback."),
+        .init(id: "playable_moments", title: "Playable Moments", subtitle: "Replay-worthy praise and fix moments."),
+        .init(id: "practice_drill", title: "Practice Drills", subtitle: "Lazy-generated training drills."),
+        .init(id: "ghost_debater", title: "Ghost Debater", subtitle: "Lazy-generated sparring response."),
+        .init(id: "comparative_analysis", title: "Comparative Analysis", subtitle: "Whole-round comparative adjudication.")
+    ]
+
+    private static let defaultModel = "google/gemini-3.1-pro-preview"
 
     var classPickerOptions: [ClassPickerOption] {
         if !availableClasses.isEmpty {
@@ -120,6 +151,7 @@ final class SetupViewModel {
     }
 
     init() {
+        self.selectedModelOverrides = Self.loadPersistedModelOverrides()
         updateTimeDefaults()
     }
 
@@ -133,6 +165,79 @@ final class SetupViewModel {
 
     func trackSetupAbandoned() {
         AnalyticsService.shared.logSetupAbandoned(currentStep: currentStep == .basicInfo ? 1 : 2)
+    }
+
+    // MARK: - Model Routing
+
+    func shouldShowModelRouting(for teacher: Teacher?) -> Bool {
+        guard let normalized = teacher?.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !normalized.isEmpty else {
+            return false
+        }
+
+        return normalized.split(separator: " ").first == "srijan"
+    }
+
+    var modelTaskSections: [ModelTaskOption] {
+        Self.modelTaskOptions
+    }
+
+    var supportedModels: [String] {
+        Self.supportedModelOptions
+    }
+
+    func selectedModel(for taskId: String) -> String {
+        selectedModelOverrides[taskId] ?? Self.defaultModel
+    }
+
+    func setSelectedModel(_ model: String, for taskId: String) {
+        guard supportedModels.contains(model) else { return }
+        selectedModelOverrides[taskId] = model
+        persistModelOverrides()
+    }
+
+    func applyModelToAllTasks(_ model: String) {
+        guard supportedModels.contains(model) else { return }
+        for task in Self.modelTaskOptions {
+            selectedModelOverrides[task.id] = model
+        }
+        persistModelOverrides()
+    }
+
+    func modelOverridesPayload(for teacher: Teacher?) -> [String: String]? {
+        guard shouldShowModelRouting(for: teacher) else {
+            return nil
+        }
+
+        return Self.modelTaskOptions.reduce(into: [String: String]()) { result, task in
+            result[task.id] = selectedModel(for: task.id)
+        }
+    }
+
+    private static func loadPersistedModelOverrides() -> [String: String] {
+        guard let data = UserDefaults.standard.data(forKey: Constants.UserDefaultsKeys.srijanModelOverrides),
+              let stored = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return Self.modelTaskOptions.reduce(into: [String: String]()) { result, task in
+                result[task.id] = Self.defaultModel
+            }
+        }
+
+        var normalized = Self.modelTaskOptions.reduce(into: [String: String]()) { result, task in
+            result[task.id] = Self.defaultModel
+        }
+
+        for (key, value) in stored where Self.supportedModelOptions.contains(value) {
+            normalized[key] = value
+        }
+
+        return normalized
+    }
+
+    private func persistModelOverrides() {
+        guard let data = try? JSONEncoder().encode(selectedModelOverrides) else { return }
+        UserDefaults.standard.set(data, forKey: Constants.UserDefaultsKeys.srijanModelOverrides)
     }
 
     // MARK: - Prefill
@@ -1074,7 +1179,8 @@ final class SetupViewModel {
             teams: teamsData,
             classId: session.classId,
             scheduleId: normalizedBackendReference(session.scheduleId),
-            classSessionId: normalizedBackendReference(selectedClassSessionId)
+            classSessionId: normalizedBackendReference(selectedClassSessionId),
+            llmModelOverrides: modelOverridesPayload(for: session.teacher)
         )
 
         let response: CreateDebateResponse = try await APIClient.shared.request(

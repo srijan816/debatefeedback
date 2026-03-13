@@ -102,6 +102,24 @@ final class AudioPlaybackService: NSObject {
         currentTime = time
     }
 
+    func playSegment(startingAt startTime: TimeInterval, endingAt endTime: TimeInterval? = nil) throws {
+        guard let player = audioPlayer else {
+            throw PlaybackError.failedToInitialize
+        }
+
+        let clampedTime = max(0, min(startTime, player.duration))
+        player.currentTime = clampedTime
+        currentTime = clampedTime
+        self.endTime = endTime
+
+        guard player.play() else {
+            throw PlaybackError.failedToStart
+        }
+
+        isPlaying = true
+        startProgressTimer()
+    }
+
     // MARK: - Progress Timer
 
     private func startProgressTimer() {

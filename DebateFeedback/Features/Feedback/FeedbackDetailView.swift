@@ -1356,10 +1356,10 @@ struct FeedbackDetailView: View {
             // Check if we are already playing this specific URL
             if playbackService.currentFileURL == playURL {
                  print("ℹ️ Same file - seeking to \(moment.timestampSeconds)s")
-                 playbackService.seek(to: moment.timestampSeconds)
-                 if !playbackService.isPlaying {
-                     playbackService.resume()
-                 }
+                 try playbackService.playSegment(
+                    startingAt: moment.timestampSeconds,
+                    endingAt: moment.endTimestampSeconds
+                 )
             } else {
                 print("▶️ Starting new playback from \(playURL.lastPathComponent)")
                 try playbackService.play(
