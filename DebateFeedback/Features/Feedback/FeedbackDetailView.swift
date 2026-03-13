@@ -172,13 +172,21 @@ struct FeedbackDetailView: View {
 
     private var availableDisplayModes: [FeedbackDisplayMode] {
         var modes: [FeedbackDisplayMode] = [.highlights, .training]
-        if hasProgressAccess {
+        if hasProgressAccess, isFeedbackReady {
             modes.append(.progress)
         }
-        if resolvedFeedbackDocumentURL != nil {
+        if isFeedbackReady, resolvedFeedbackDocumentURL != nil {
             modes.append(.document)
         }
         return modes
+    }
+
+    private var isFeedbackReady: Bool {
+        errorMessage == nil && (!feedbackContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !sections.isEmpty)
+    }
+
+    private var isFeedbackStillProcessing: Bool {
+        !isFeedbackReady && !isLoading
     }
 
     private func usesWideLayout(for width: CGFloat) -> Bool {
@@ -191,7 +199,11 @@ struct FeedbackDetailView: View {
 
     private func documentFeedbackView(contentWidth: CGFloat, isWideLayout: Bool) -> some View {
         Group {
-            if let url = resolvedFeedbackDocumentURL {
+            if isFeedbackStillProcessing {
+                contentLoadingView("We’re building the full document view. It will unlock as soon as the main feedback is ready.")
+                    .frame(maxWidth: feedbackContentMaxWidth(for: contentWidth))
+                    .frame(maxWidth: .infinity)
+            } else if let url = resolvedFeedbackDocumentURL {
                 VStack(spacing: 0) {
                     speakerInfoBar
 
@@ -307,7 +319,9 @@ struct FeedbackDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 speakerHeader
 
-                if isTrainingLoading {
+                if isFeedbackStillProcessing {
+                    contentLoadingView("We’re preparing the transcript and core feedback first. Training tools will appear here right after that.")
+                } else if isTrainingLoading {
                     contentLoadingView("Loading training snapshot...")
                 } else if let trainingErrorMessage {
                     lightweightErrorCard(
@@ -938,6 +952,19 @@ struct FeedbackDetailView: View {
     private func loadAllContent() async {
         await loadFeedback()
 
+        guard isFeedbackReady else {
+            trainingContent = nil
+            comparativeAnalysis = nil
+            comparativeErrorMessage = nil
+            trainingErrorMessage = nil
+            portfolio = nil
+            benchmarks = nil
+            progressErrorMessage = nil
+            isTrainingLoading = false
+            isProgressLoading = false
+            return
+        }
+
         async let trainingTask: Void = loadTrainingArtifacts()
         async let progressTask: Void = loadProgressData()
 
@@ -1010,7 +1037,11 @@ struct FeedbackDetailView: View {
             isLoading = false
         } catch {
             print("❌ loadFeedback FAILED: \(error.localizedDescription)")
-            errorMessage = "Feedback is ready in the web viewer. Tap the menu to open it."
+            if let networkError = error as? NetworkError, networkError.isPendingFeedbackState {
+                errorMessage = "Feedback is still processing. Highlights, documents, and training tools will appear here once the analysis is finished."
+            } else {
+                errorMessage = "Feedback is still loading. If this keeps happening, reopen the speech in a moment."
+            }
             isLoading = false
         }
     }
@@ -1029,14 +1060,19 @@ struct FeedbackDetailView: View {
             )
             trainingContent = response
         } catch {
-            trainingErrorMessage = error.localizedDescription
+            if let networkError = error as? NetworkError, networkError.isPendingTrainingState {
+                trainingContent = nil
+                trainingErrorMessage = nil
+            } else {
+                trainingErrorMessage = error.localizedDescription
+            }
         }
 
         guard let debateId = debateIdForAnalysis else { return }
 
         do {
             let analysis: ComparativeAnalysisResponse = try await APIClient.shared.request(
-                endpoint: .getComparativeAnalysis(debateId: debateId, generate: true)
+                endpoint: .getComparativeAnalysis(debateId: debateId, generate: false)
             )
             comparativeAnalysis = analysis
         } catch {
@@ -1058,7 +1094,11 @@ struct FeedbackDetailView: View {
             )
             trainingContent = response
         } catch {
-            trainingErrorMessage = error.localizedDescription
+            if let networkError = error as? NetworkError, networkError.isPendingTrainingState {
+                trainingErrorMessage = "The transcript is still settling. Try again in a moment and the drills will appear."
+            } else {
+                trainingErrorMessage = error.localizedDescription
+            }
         }
     }
 

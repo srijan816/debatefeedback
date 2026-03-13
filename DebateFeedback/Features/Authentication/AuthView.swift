@@ -40,8 +40,7 @@ struct AuthView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 225, height: 225)
-                            .rotationEffect(.degrees(animateMascot ? 1.8 : -1.8))
-                            .offset(y: animateMascot ? -4 : 4)
+                            .offset(y: animateMascot ? -6 : 4)
                     }
                     .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: animateMascot)
 
@@ -54,8 +53,6 @@ struct AuthView: View {
                         .foregroundColor(Constants.Colors.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
-
-                    demoCard
                 }
 
                 // Login Section
@@ -116,13 +113,8 @@ struct AuthView: View {
                         HapticManager.shared.light()
                         viewModel.loginAsGuest()
                     } label: {
-                        VStack(spacing: 4) {
-                            Text("Continue as Guest")
-                                .fontWeight(.bold)
-                            Text("Try full AI feedback on a sample debate")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                        }
+                        Text("Continue as Guest")
+                            .fontWeight(.bold)
                             .frame(maxWidth: .infinity)
                             .frame(height: Constants.Sizing.minimumTapTarget)
                             .foregroundColor(.white)
@@ -177,44 +169,6 @@ struct AuthView: View {
                 }
             }
         }
-    }
-
-    private var demoCard: some View {
-        HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 18)
-                .fill(
-                    LinearGradient(
-                        colors: [Constants.Colors.primaryBlue.opacity(0.95), Constants.Colors.softCyan.opacity(0.85)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 88, height: 58)
-                .overlay(
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 26))
-                        .foregroundColor(.white)
-                )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Watch 30-sec demo")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(Constants.Colors.textPrimary)
-                Text("See a round turn into AI feedback, drills, and coaching in one tap.")
-                    .font(.caption)
-                    .foregroundColor(Constants.Colors.textSecondary)
-            }
-
-            Spacer()
-        }
-        .padding(14)
-        .background(Constants.Colors.cardBackground)
-        .cornerRadius(20)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Constants.Colors.textTertiary.opacity(0.18), lineWidth: 1)
-        )
-        .padding(.horizontal, 8)
     }
 
     private var teacherToolsCard: some View {

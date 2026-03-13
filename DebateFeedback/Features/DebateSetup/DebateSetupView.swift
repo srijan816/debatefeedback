@@ -613,6 +613,15 @@ struct DebateSetupView: View {
         VStack(alignment: .leading, spacing: 12) {
             if !viewModel.classPickerOptions.isEmpty {
                 Menu {
+                    Button {
+                        viewModel.clearScheduleSelection()
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Manual roster")
+                            Text("Start with no preloaded students")
+                        }
+                    }
+
                     ForEach(viewModel.classPickerOptions) { option in
                         Button {
                             viewModel.selectClass(withId: option.id)
@@ -645,6 +654,16 @@ struct DebateSetupView: View {
                                 Text("Class ID: \(classId)")
                                     .font(.subheadline)
                                     .foregroundColor(Constants.Colors.textPrimary)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Manual roster")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(Constants.Colors.textPrimary)
+                                Text("No class selected")
+                                    .font(.caption)
+                                    .foregroundColor(Constants.Colors.textSecondary)
                             }
                         }
 
@@ -698,7 +717,7 @@ struct DebateSetupView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "building.2")
                         .foregroundColor(Constants.Colors.primaryBlue)
-                    Text("Select a class to auto-fill details")
+                    Text("Select a class to auto-fill details, or stay in manual roster mode")
                         .font(.subheadline)
                         .foregroundColor(Constants.Colors.textSecondary)
                     Spacer()

@@ -314,6 +314,7 @@ actor APIClient {
             ]
             let response = ScheduleResponse(
                 classId: primaryClassId,
+                classSessionId: nil,
                 students: mockStudents,
                 suggestedMotion: "This house believes that social media does more harm than good",
                 format: "WSDC",
@@ -519,6 +520,7 @@ struct TeacherResponse: Codable {
 
 struct ScheduleResponse: Codable {
     let classId: String
+    let classSessionId: String?
     let students: [StudentResponse]
     let suggestedMotion: String?
     let format: String
@@ -756,6 +758,7 @@ struct CreateDebateRequest: Codable {
     let teams: TeamsData
     let classId: String?
     let scheduleId: String?
+    let classSessionId: String?
 
     enum CodingKeys: String, CodingKey {
         case motion, format, teams
@@ -764,6 +767,7 @@ struct CreateDebateRequest: Codable {
         case replyTimeSeconds = "reply_time_seconds"
         case classId = "class_id"
         case scheduleId = "schedule_id"
+        case classSessionId = "class_session_id"
     }
 }
 

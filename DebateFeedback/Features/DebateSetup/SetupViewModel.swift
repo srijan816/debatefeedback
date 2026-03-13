@@ -50,6 +50,7 @@ final class SetupViewModel {
     var scheduleNotice: String?
     var selectedClassId: String?
     var selectedScheduleId: String?
+    var selectedClassSessionId: String?
     var selectedClassDayTime: String? // Formatted day/time for current class
     var availableClasses: [ScheduleResponse.ClassInfo] = []
     var availableAlternatives: [ScheduleAlternative] = []
@@ -175,6 +176,17 @@ final class SetupViewModel {
     }
 
     @MainActor
+    func clearScheduleSelection() {
+        selectedClassId = nil
+        selectedScheduleId = nil
+        selectedClassSessionId = nil
+        selectedClassDayTime = nil
+        hasScheduleDefaults = false
+        scheduleNotice = "Manual class mode is on. Add only the students you want for this round."
+        updateRoster(with: [])
+    }
+
+    @MainActor
     private func loadSchedule(forClassId classId: String?) async {
         guard let teacher = cachedTeacher else { return }
 
@@ -228,6 +240,7 @@ final class SetupViewModel {
 
         selectedClassId = classInfo.classId
         selectedScheduleId = classInfo.scheduleId
+        selectedClassSessionId = fallbackMatchesSelectedClass ? fallbackResponse?.classSessionId : nil
         let resolvedDayTime = classInfo.dayTimeString ?? (fallbackMatchesSelectedClass ? fallbackResponse?.classDayTimeString : nil)
         if let resolvedDayTime, resolvedDayTime != classInfo.classId {
             selectedClassDayTime = resolvedDayTime
@@ -833,12 +846,6 @@ final class SetupViewModel {
             }
         }
 
-        if !unassignedStudents().isEmpty {
-            errorMessage = "Some students are not assigned to teams. Remove them or assign them."
-            showError = true
-            return false
-        }
-
         return true
     }
 
@@ -951,6 +958,7 @@ final class SetupViewModel {
         } else {
             // Fallback to legacy handling if the response class is missing from availableClasses
             selectedClassId = response.classId
+            selectedClassSessionId = response.classSessionId
             if response.classDayTimeString != response.classId {
                 selectedClassDayTime = response.classDayTimeString
             } else {
@@ -1065,7 +1073,8 @@ final class SetupViewModel {
             replyTimeSeconds: session.replyTimeSeconds,
             teams: teamsData,
             classId: session.classId,
-            scheduleId: session.scheduleId
+            scheduleId: normalizedBackendReference(session.scheduleId),
+            classSessionId: normalizedBackendReference(selectedClassSessionId)
         )
 
         let response: CreateDebateResponse = try await APIClient.shared.request(
@@ -1112,6 +1121,15 @@ final class SetupViewModel {
             }
             replyTimeSeconds = nil
         }
+    }
+
+    private func normalizedBackendReference(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty,
+              UUID(uuidString: trimmed) != nil else {
+            return nil
+        }
+        return trimmed
     }
 
     enum TeamType: String, CaseIterable, Hashable {

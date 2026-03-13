@@ -53,4 +53,32 @@ enum NetworkError: LocalizedError {
             return false
         }
     }
+
+    var isPendingFeedbackState: Bool {
+        switch self {
+        case .notFound:
+            return true
+        case .serverError(let statusCode):
+            return statusCode == 409
+        case .unknown(let error):
+            let message = error.localizedDescription.lowercased()
+            return message.contains("409") || message.contains("not ready")
+        default:
+            return false
+        }
+    }
+
+    var isPendingTrainingState: Bool {
+        switch self {
+        case .notFound:
+            return true
+        case .serverError(let statusCode):
+            return statusCode == 409
+        case .unknown(let error):
+            let message = error.localizedDescription.lowercased()
+            return message.contains("409") || message.contains("not ready") || message.contains("processing")
+        default:
+            return false
+        }
+    }
 }
