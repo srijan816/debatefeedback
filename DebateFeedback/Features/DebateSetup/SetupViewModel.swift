@@ -382,6 +382,23 @@ final class SetupViewModel {
         HapticManager.shared.medium()
     }
 
+    func addDemoStudents(count: Int = 8) {
+        let primaryNames = ["Avery", "Noah", "Mia", "Ethan", "Chloe", "Leo", "Lila", "Arjun"]
+        let secondaryNames = ["Kaelyn", "Alex", "Luke", "Valerie", "Cyrus", "Alissa", "Naveen", "Mai"]
+        let seedNames = studentLevel == .primary ? primaryNames : secondaryNames
+        let existingNames = Set(students.map { $0.name.lowercased() })
+
+        let additions = seedNames
+            .filter { !existingNames.contains($0.lowercased()) }
+            .prefix(count)
+            .map { Student(name: $0, level: studentLevel) }
+
+        guard !additions.isEmpty else { return }
+        students.append(contentsOf: additions)
+        showSuccessToast("Demo class ready")
+        HapticManager.shared.medium()
+    }
+
     // MARK: - Toast Helpers
 
     func showSuccessToast(_ message: String) {

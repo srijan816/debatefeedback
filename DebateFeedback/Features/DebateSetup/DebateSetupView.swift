@@ -169,11 +169,11 @@ struct DebateSetupView: View {
     }
 
     private func contentHorizontalPadding(for width: CGFloat) -> CGFloat {
-        usesWideLayout(for: width) ? 32 : 0
+        usesWideLayout(for: width) ? 32 : 16
     }
 
     private func contentMaxWidth(for width: CGFloat) -> CGFloat {
-        usesWideLayout(for: width) ? min(width - 64, 1320) : width
+        usesWideLayout(for: width) ? min(width - 64, 1320) : min(width - 32, 760)
     }
 
     private var teacherRecentSessions: [DebateSession] {
@@ -268,6 +268,26 @@ struct DebateSetupView: View {
 
     private var assignedStudentCount: Int {
         max(0, viewModel.students.count - viewModel.unassignedStudents().count)
+    }
+
+    private var teamBalanceSummary: (label: String, fraction: Double, tint: Color, detail: String)? {
+        switch viewModel.selectedFormat.teamStructure {
+        case .propOpp, .asianParliamentary:
+            let propCount = viewModel.propTeam.count
+            let oppCount = viewModel.oppTeam.count
+            let total = max(propCount + oppCount, 1)
+            let difference = abs(propCount - oppCount)
+            let fraction = Double(propCount) / Double(total)
+            let tint = difference <= 1 ? Constants.Colors.complete : Constants.Colors.warning
+            let detail = difference == 0 ? "\(propCount) vs \(oppCount) balanced" : "\(propCount) vs \(oppCount) uneven"
+            return ("Team balance", fraction, tint, detail)
+        case .britishParliamentary:
+            let counts = [viewModel.ogTeam.count, viewModel.ooTeam.count, viewModel.cgTeam.count, viewModel.coTeam.count]
+            guard let maxCount = counts.max(), let minCount = counts.min() else { return nil }
+            let tint = (maxCount - minCount) <= 1 ? Constants.Colors.complete : Constants.Colors.warning
+            let detail = "OG \(counts[0]) • OO \(counts[1]) • CG \(counts[2]) • CO \(counts[3])"
+            return ("Room balance", 0.5, tint, detail)
+        }
     }
 
     private var teamReadinessSummary: (icon: String, title: String, detail: String, color: Color) {
@@ -1067,6 +1087,33 @@ struct DebateSetupView: View {
                 summaryChip(title: "Assigned", value: "\(assignedStudentCount)", icon: "checkmark.circle")
                 summaryChip(title: "Unassigned", value: "\(viewModel.unassignedStudents().count)", icon: "tray")
             }
+
+            if let balance = teamBalanceSummary {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(balance.label)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Constants.Colors.textSecondary)
+                        Spacer()
+                        Text(balance.detail)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(balance.tint)
+                    }
+
+                    GeometryReader { geometry in
+                        let width = max(geometry.size.width, 1)
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 999)
+                                .fill(Constants.Colors.backgroundSecondary)
+
+                            RoundedRectangle(cornerRadius: 999)
+                                .fill(balance.tint.opacity(0.85))
+                                .frame(width: max(24, width * balance.fraction))
+                        }
+                    }
+                    .frame(height: 10)
+                }
+            }
         }
         .padding(18)
         .softCard(
@@ -1155,7 +1202,8 @@ struct DebateSetupView: View {
     private var actionButtonsRow: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                autoFillTeamsButton
+                quickAddDemoClassButton
+                randomizeSidesButton
                 clearAssignmentsButton
                 if viewModel.studentLevel == .primary {
                     wheelOfDoomButton
@@ -1163,7 +1211,8 @@ struct DebateSetupView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                autoFillTeamsButton
+                quickAddDemoClassButton
+                randomizeSidesButton
                 HStack(spacing: 12) {
                     clearAssignmentsButton
                     if viewModel.studentLevel == .primary {
@@ -1174,9 +1223,25 @@ struct DebateSetupView: View {
         }
     }
 
-    private var autoFillTeamsButton: some View {
-        Button("Auto-fill teams") {
+    private var quickAddDemoClassButton: some View {
+        Button("Quick Add 8 Students") {
+            viewModel.addDemoStudents()
+        }
+        .foregroundColor(Constants.Colors.textPrimary)
+        .frame(height: Constants.Sizing.minimumTapTarget)
+        .padding(.horizontal, 18)
+        .background(Constants.Colors.backgroundSecondary)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Constants.Colors.softCyan.opacity(0.4), lineWidth: 1)
+        )
+    }
+
+    private var randomizeSidesButton: some View {
+        Button("Randomize sides") {
             viewModel.autoAssignStudents()
+            viewModel.showSuccessToast("Sides randomized")
         }
         .gradientButtonStyle(isEnabled: !viewModel.students.isEmpty)
         .disabled(viewModel.students.isEmpty)
@@ -1523,34 +1588,16 @@ struct DebateSetupView: View {
     }
 
     private var twoTeamLayout: some View {
-        HStack(spacing: 16) {
-            TeamSlotBox(
-                title: teamTitle(.prop),
-                gradient: teamGradient(.prop),
-                borderColor: teamBorderColor(.prop),
-                students: viewModel.propTeam,
-                maxSlots: viewModel.maxSlots(for: .prop),
-                onRemove: { student in
-                    viewModel.removeFromAllTeams(student)
-                },
-                onDrop: { payload, position in
-                    handleDrop(payload, team: .prop, position: position)
-                }
-            )
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                teamSlotBox(for: .prop)
+                teamSlotBox(for: .opp)
+            }
 
-            TeamSlotBox(
-                title: teamTitle(.opp),
-                gradient: teamGradient(.opp),
-                borderColor: teamBorderColor(.opp),
-                students: viewModel.oppTeam,
-                maxSlots: viewModel.maxSlots(for: .opp),
-                onRemove: { student in
-                    viewModel.removeFromAllTeams(student)
-                },
-                onDrop: { payload, position in
-                    handleDrop(payload, team: .opp, position: position)
-                }
-            )
+            VStack(spacing: 16) {
+                teamSlotBox(for: .prop)
+                teamSlotBox(for: .opp)
+            }
         }
     }
 
@@ -1615,34 +1662,50 @@ struct DebateSetupView: View {
     }
 
     private var asianParliamentaryLayout: some View {
-        HStack(spacing: 16) {
-            TeamSlotBox(
-                title: teamTitle(.prop),
-                gradient: teamGradient(.prop),
-                borderColor: teamBorderColor(.prop),
-                students: viewModel.propTeam,
-                maxSlots: viewModel.maxSlots(for: .prop),
-                onRemove: { student in
-                    viewModel.removeFromAllTeams(student)
-                },
-                onDrop: { payload, position in
-                    handleDrop(payload, team: .prop, position: position)
-                }
-            )
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                teamSlotBox(for: .prop)
+                teamSlotBox(for: .opp)
+            }
 
-            TeamSlotBox(
-                title: teamTitle(.opp),
-                gradient: teamGradient(.opp),
-                borderColor: teamBorderColor(.opp),
-                students: viewModel.oppTeam,
-                maxSlots: viewModel.maxSlots(for: .opp),
-                onRemove: { student in
-                    viewModel.removeFromAllTeams(student)
-                },
-                onDrop: { payload, position in
-                    handleDrop(payload, team: .opp, position: position)
-                }
-            )
+            VStack(spacing: 16) {
+                teamSlotBox(for: .prop)
+                teamSlotBox(for: .opp)
+            }
+        }
+    }
+
+    private func teamSlotBox(for team: SetupViewModel.TeamType) -> some View {
+        TeamSlotBox(
+            title: teamTitle(team),
+            gradient: teamGradient(team),
+            borderColor: teamBorderColor(team),
+            students: students(for: team),
+            maxSlots: viewModel.maxSlots(for: team),
+            onRemove: { student in
+                viewModel.removeFromAllTeams(student)
+            },
+            onDrop: { payload, position in
+                handleDrop(payload, team: team, position: position)
+            }
+        )
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    private func students(for team: SetupViewModel.TeamType) -> [Student] {
+        switch team {
+        case .prop:
+            return viewModel.propTeam
+        case .opp:
+            return viewModel.oppTeam
+        case .og:
+            return viewModel.ogTeam
+        case .oo:
+            return viewModel.ooTeam
+        case .cg:
+            return viewModel.cgTeam
+        case .co:
+            return viewModel.coTeam
         }
     }
 
@@ -2080,7 +2143,7 @@ struct TeamSlotBox: View {
 
     private var backgroundView: some View {
         RoundedRectangle(cornerRadius: 20)
-            .fill(Constants.Colors.cardBackground)
+            .fill(isTargeted ? borderColor.opacity(0.12) : Constants.Colors.cardBackground)
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
                     .stroke(borderColor.opacity(0.4), lineWidth: 1.5)
@@ -2152,10 +2215,14 @@ struct TeamSlotRow: View {
         Group {
             if student != nil {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Constants.Colors.backgroundSecondary)
+                    .fill(isTargeted ? borderColor.opacity(0.16) : Constants.Colors.backgroundSecondary)
             } else {
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(borderColor.opacity(0.35), style: StrokeStyle(lineWidth: 1.2, dash: [5]))
+                    .fill(isTargeted ? borderColor.opacity(0.12) : .clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(borderColor.opacity(0.42), style: StrokeStyle(lineWidth: 1.2, dash: [5]))
+                    )
             }
         }
     }

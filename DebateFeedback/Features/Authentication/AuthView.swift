@@ -11,6 +11,8 @@ struct AuthView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel = AuthViewModel()
+    @State private var animateMascot = false
+    @State private var showTeacherTools = false
 
     var body: some View {
         ZStack {
@@ -21,16 +23,27 @@ struct AuthView: View {
             SubtleGlitterView()
                 .ignoresSafeArea()
 
-            VStack(spacing: 50) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 34) {
                 Spacer()
 
                 // App Logo/Title with Mascot
                 VStack(spacing: 24) {
-                    // Mascot image - the image already has its own background
-                    Image("mascot")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 225, height: 225)
+                    ZStack {
+                        Circle()
+                            .fill(Constants.Colors.softPink.opacity(0.16))
+                            .frame(width: 210, height: 210)
+                            .blur(radius: animateMascot ? 10 : 18)
+                            .scaleEffect(animateMascot ? 1.02 : 0.94)
+
+                        Image("mascot")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 225, height: 225)
+                            .rotationEffect(.degrees(animateMascot ? 1.8 : -1.8))
+                            .offset(y: animateMascot ? -4 : 4)
+                    }
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: animateMascot)
 
                     Text("DebateMate")
                         .font(.system(size: 36, weight: .bold, design: .rounded))
@@ -41,9 +54,9 @@ struct AuthView: View {
                         .foregroundColor(Constants.Colors.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
-                }
 
-                Spacer()
+                    demoCard
+                }
 
                 // Login Section
                 VStack(spacing: 20) {
@@ -103,30 +116,34 @@ struct AuthView: View {
                         HapticManager.shared.light()
                         viewModel.loginAsGuest()
                     } label: {
-                        Text("Continue as Guest")
-                            .fontWeight(.semibold)
+                        VStack(spacing: 4) {
+                            Text("Continue as Guest")
+                                .fontWeight(.bold)
+                            Text("Try full AI feedback on a sample debate")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
                             .frame(maxWidth: .infinity)
                             .frame(height: Constants.Sizing.minimumTapTarget)
-                            .background(Constants.Colors.backgroundLight)
-                            .foregroundColor(Constants.Colors.textPrimary)
+                            .foregroundColor(.white)
                             .cornerRadius(25)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 25)
-                                    .stroke(Constants.Colors.softPink.opacity(0.5), lineWidth: 2)
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Constants.Colors.softPink, Constants.Colors.softPurple],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
                             )
+                            .shadow(color: Constants.Colors.softPink.opacity(0.35), radius: 16, x: 0, y: 8)
                     }
                     .disabled(viewModel.isLoading)
                     .accessibilityLabel("Continue as guest button")
                     .accessibilityHint("Use the app with limited features and no history")
 
-                    // Guest Mode Info
-                    HStack(spacing: 6) {
-                        Image(systemName: "info.circle")
-                            .font(.caption2)
-                        Text("Limited features, no history")
-                            .font(.caption)
-                    }
-                    .foregroundColor(Constants.Colors.textSecondary)
+                    teacherToolsCard
                 }
                 .padding(.horizontal, 32)
 
@@ -139,8 +156,12 @@ struct AuthView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
+            }
         }
         .preferredColorScheme(ThemeManager.shared.preferredColorScheme)
+        .onAppear {
+            animateMascot = true
+        }
         .alert("Error", isPresented: $viewModel.showError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -154,6 +175,78 @@ struct AuthView: View {
                 } else {
                     coordinator.loginAsGuest()
                 }
+            }
+        }
+    }
+
+    private var demoCard: some View {
+        HStack(spacing: 14) {
+            RoundedRectangle(cornerRadius: 18)
+                .fill(
+                    LinearGradient(
+                        colors: [Constants.Colors.primaryBlue.opacity(0.95), Constants.Colors.softCyan.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 88, height: 58)
+                .overlay(
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 26))
+                        .foregroundColor(.white)
+                )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Watch 30-sec demo")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Constants.Colors.textPrimary)
+                Text("See a round turn into AI feedback, drills, and coaching in one tap.")
+                    .font(.caption)
+                    .foregroundColor(Constants.Colors.textSecondary)
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(Constants.Colors.cardBackground)
+        .cornerRadius(20)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Constants.Colors.textTertiary.opacity(0.18), lineWidth: 1)
+        )
+        .padding(.horizontal, 8)
+    }
+
+    private var teacherToolsCard: some View {
+        VStack(spacing: 10) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    showTeacherTools.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Teacher?")
+                        .font(.subheadline.weight(.semibold))
+                    Image(systemName: showTeacherTools ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                }
+                .foregroundColor(Constants.Colors.primaryBlue)
+            }
+
+            if showTeacherTools {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Import from Google Classroom", systemImage: "person.2.wave.2")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Constants.Colors.textPrimary)
+
+                    Text("Roster sync is the next teacher shortcut we should add. For now, teacher login still unlocks saved sessions and the full feedback workflow.")
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(Constants.Colors.backgroundSecondary)
+                .cornerRadius(16)
             }
         }
     }
