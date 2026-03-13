@@ -612,28 +612,18 @@ struct DebateSetupView: View {
     private var classSelectionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !viewModel.classPickerOptions.isEmpty {
-                let selectionBinding = Binding<String?>(
-                    get: { viewModel.selectedClassId },
-                    set: { newValue in
-                        guard let newValue else { return }
-                        viewModel.selectClass(withId: newValue)
-                    }
-                )
-
-                Picker(selection: selectionBinding) {
+                Menu {
                     ForEach(viewModel.classPickerOptions) { option in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(option.title)
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(Constants.Colors.textPrimary)
-                            if let subtitle = option.subtitle {
-                                Text(subtitle)
-                                    .font(.caption)
-                                    .foregroundColor(Constants.Colors.textSecondary)
+                        Button {
+                            viewModel.selectClass(withId: option.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(option.title)
+                                if let subtitle = option.subtitle {
+                                    Text(subtitle)
+                                }
                             }
                         }
-                        .tag(String?.some(option.id))
                     }
                 } label: {
                     HStack(spacing: 8) {
@@ -669,8 +659,13 @@ struct DebateSetupView: View {
                             .font(.caption)
                             .foregroundColor(Constants.Colors.textSecondary)
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Constants.Colors.backgroundSecondary)
+                    .cornerRadius(16)
                 }
-                .pickerStyle(.menu)
+                .buttonStyle(.plain)
             } else if let classId = viewModel.selectedClassId {
                 HStack(spacing: 8) {
                     Image(systemName: "calendar")
@@ -708,6 +703,19 @@ struct DebateSetupView: View {
                         .foregroundColor(Constants.Colors.textSecondary)
                     Spacer()
                 }
+            } else if viewModel.isLoadingSchedule {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .scaleEffect(0.85)
+                    Text("Loading your class roster...")
+                        .font(.subheadline)
+                        .foregroundColor(Constants.Colors.textSecondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Constants.Colors.backgroundSecondary)
+                .cornerRadius(16)
             }
 
             if !viewModel.availableAlternatives.isEmpty {
@@ -849,10 +857,15 @@ struct DebateSetupView: View {
     }
 
     private var showsSessionSourceCard: Bool {
-        viewModel.selectedClassId != nil ||
-        !viewModel.availableAlternatives.isEmpty ||
-        viewModel.hasScheduleDefaults ||
-        viewModel.scheduleNotice != nil
+        coordinator.currentTeacher != nil &&
+        (
+            viewModel.isLoadingSchedule ||
+            viewModel.selectedClassId != nil ||
+            !viewModel.availableAlternatives.isEmpty ||
+            !viewModel.classPickerOptions.isEmpty ||
+            viewModel.hasScheduleDefaults ||
+            viewModel.scheduleNotice != nil
+        )
     }
 
     private var sessionSourceCard: some View {
@@ -867,7 +880,10 @@ struct DebateSetupView: View {
                 scheduleNoticeView(notice)
             }
 
-            if viewModel.selectedClassId != nil || !viewModel.availableAlternatives.isEmpty {
+            if viewModel.isLoadingSchedule ||
+                viewModel.selectedClassId != nil ||
+                !viewModel.availableAlternatives.isEmpty ||
+                !viewModel.classPickerOptions.isEmpty {
                 classSelectionSection
             }
         }
