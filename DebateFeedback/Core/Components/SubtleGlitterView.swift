@@ -32,19 +32,36 @@ struct SubtleGlitterView: View {
             .onAppear {
                 generateSparkles(in: geometry.size)
             }
+            .onChange(of: geometry.size) { _, newSize in
+                generateSparkles(in: newSize)
+            }
         }
         .allowsHitTesting(false) // Prevent interaction with background
     }
 
     private func generateSparkles(in size: CGSize) {
+        let horizontalPadding: CGFloat = 20
+        let verticalPadding: CGFloat = 20
+        let usableWidth = size.width - (horizontalPadding * 2)
+        let usableHeight = size.height - (verticalPadding * 2)
+
+        guard usableWidth > 0, usableHeight > 0 else {
+            sparkles = []
+            return
+        }
+
         // Only 8-10 sparkles total (very subtle)
         let count = Int.random(in: 8...10)
         let colors = [Constants.Colors.primaryBlue, Constants.Colors.softPink]
+        let minX = horizontalPadding
+        let maxX = horizontalPadding + usableWidth
+        let minY = verticalPadding
+        let maxY = verticalPadding + usableHeight
 
         sparkles = (0..<count).map { index in
             Sparkle(
-                x: CGFloat.random(in: 20...(size.width - 20)),
-                y: CGFloat.random(in: 20...(size.height - 20)),
+                x: CGFloat.random(in: minX...maxX),
+                y: CGFloat.random(in: minY...maxY),
                 color: colors.randomElement()!,
                 size: CGFloat.random(in: 4...8),
                 delay: Double.random(in: 0...2)
