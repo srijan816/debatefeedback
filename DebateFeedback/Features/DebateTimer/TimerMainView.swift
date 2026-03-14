@@ -69,7 +69,7 @@ struct TimerMainView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 12)
 
-                            if !viewModel.recordings.isEmpty {
+                            if !viewModel.recordings.isEmpty && !viewModel.isRecording {
                                 recordingsList(viewModel: viewModel, isWideLayout: true)
                                     .frame(width: min(max(geometry.size.width * 0.28, 280), 360))
                             }
