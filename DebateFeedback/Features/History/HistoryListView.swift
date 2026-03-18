@@ -63,6 +63,19 @@ struct HistoryListView: View {
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, prompt: "Search motions or students")
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if coordinator.canNavigateBack {
+                    Button {
+                        HapticManager.shared.light()
+                        coordinator.navigateBack()
+                    } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .accessibilityLabel("Back button")
+                    .accessibilityHint("Return to the previous screen")
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     HapticManager.shared.light()
