@@ -18,9 +18,11 @@ struct FeedbackListView: View {
 
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query private var allRecordings: [SpeechRecording]
     @State private var showingCompleteRoundConfirmation = false
+    @State private var retryingRecordingIds: Set<UUID> = []
 
     private var recordings: [SpeechRecording] {
         allRecordings.filter { $0.debateSession?.id == debateSession.id }
@@ -41,10 +43,18 @@ struct FeedbackListView: View {
                     } else {
                         LazyVGrid(columns: gridColumns(for: geometry.size.width), spacing: 16) {
                             ForEach(recordings, id: \.id) { recording in
-                                NavigationLink(destination: FeedbackDetailView(recording: recording)) {
-                                    FeedbackCard(recording: recording)
+                                if canOpenFeedbackDetail(for: recording) {
+                                    NavigationLink(destination: FeedbackDetailView(recording: recording)) {
+                                        FeedbackCard(recording: recording)
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    FeedbackCard(
+                                        recording: recording,
+                                        onRetry: canRetry(recording) ? { retryProcessing(for: recording) } : nil,
+                                        isRetrying: retryingRecordingIds.contains(recording.id)
+                                    )
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                         .padding(.horizontal)
@@ -141,6 +151,71 @@ struct FeedbackListView: View {
         }
     }
 
+    private func canOpenFeedbackDetail(for recording: SpeechRecording) -> Bool {
+        recording.feedbackStatus == .complete
+    }
+
+    private func canRetry(_ recording: SpeechRecording) -> Bool {
+        recording.uploadStatus == .failed ||
+        recording.transcriptionStatus == .failed ||
+        recording.feedbackStatus == .failed
+    }
+
+    private func retryProcessing(for recording: SpeechRecording) {
+        guard !retryingRecordingIds.contains(recording.id) else { return }
+
+        retryingRecordingIds.insert(recording.id)
+
+        Task { @MainActor in
+            defer {
+                retryingRecordingIds.remove(recording.id)
+            }
+
+            do {
+                recording.uploadProgress = 0
+                recording.uploadStatus = .uploading
+                recording.processingStatus = .processing
+                recording.transcriptionStatus = .processing
+                recording.feedbackStatus = .pending
+                recording.feedbackUrl = nil
+                recording.feedbackContent = nil
+                recording.transcriptUrl = nil
+                recording.transcriptText = nil
+                recording.transcriptionErrorMessage = nil
+                recording.feedbackErrorMessage = nil
+                recording.playableMoments = []
+                recording.updateAggregatedStatus()
+                try? modelContext.save()
+
+                let speechId = try await UploadService.shared.uploadSpeech(
+                    recording: recording,
+                    debateSession: debateSession
+                ) { progress in
+                    Task { @MainActor in
+                        recording.uploadProgress = progress
+                    }
+                }
+
+                recording.speechId = speechId
+                recording.uploadStatus = .uploaded
+                recording.feedbackStatus = .processing
+                recording.updateAggregatedStatus()
+                try? modelContext.save()
+
+                await UploadService.shared.monitorSpeechProcessing(
+                    recordingId: recording.id,
+                    speechId: speechId
+                )
+            } catch {
+                recording.uploadStatus = .failed
+                recording.transcriptionStatus = .failed
+                recording.transcriptionErrorMessage = "Retry failed: \(error.localizedDescription)"
+                recording.updateAggregatedStatus()
+                try? modelContext.save()
+            }
+        }
+    }
+
     // MARK: - Debate Info Header
 
     private var debateInfoHeader: some View {
@@ -218,6 +293,8 @@ struct FeedbackListView: View {
 
 struct FeedbackCard: View {
     let recording: SpeechRecording
+    var onRetry: (() -> Void)? = nil
+    var isRetrying: Bool = false
 
     @State private var showingShareSheet = false
 
@@ -249,6 +326,28 @@ struct FeedbackCard: View {
 
             // Status
             statusView
+
+            if let onRetry {
+                Button(action: onRetry) {
+                    HStack(spacing: 8) {
+                        if isRetrying {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+
+                        Text(recording.uploadStatus == .failed ? "Retry Upload" : "Redo Transcription")
+                            .fontWeight(.semibold)
+                    }
+                    .font(.caption)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Constants.Colors.primaryAction)
+                .disabled(isRetrying)
+            }
 
             // View indicator for completed feedback
             if recording.feedbackStatus == .complete {

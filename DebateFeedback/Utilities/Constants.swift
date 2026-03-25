@@ -244,6 +244,8 @@ enum Constants {
         static let hasShownOnboarding = "com.debatefeedback.hasShownOnboarding"
         static let themePreference = "com.debatefeedback.themePreference"
         static let srijanModelOverrides = "com.debatefeedback.srijanModelOverrides"
+        static let activeDebateSessionId = "com.debatefeedback.activeDebateSessionId"
+        static let activeSpeakerIndex = "com.debatefeedback.activeSpeakerIndex"
     }
 
     // MARK: - File Management

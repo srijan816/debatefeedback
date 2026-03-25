@@ -39,6 +39,9 @@ struct DebateFeedbackApp: App {
         // Log app opened
         AnalyticsService.shared.logAppOpened()
 
+        // Initialize upload recovery as early as possible on launch
+        _ = UploadService.shared
+
         // Clean up old audio files
         FileManager.cleanupOldRecordings()
     }

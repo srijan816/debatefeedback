@@ -82,6 +82,8 @@ struct DebateSetupView: View {
                 // restore the state and go to team assignment step
                 if let session = coordinator.currentDebateSession {
                     restoreStateFromSession(session)
+                } else {
+                    recoverPersistedActiveSessionIfNeeded()
                 }
             }
             .onDisappear {
@@ -243,6 +245,19 @@ struct DebateSetupView: View {
 
         // Go to team assignment step
         viewModel.currentStep = .teamAssignment
+    }
+
+    private func recoverPersistedActiveSessionIfNeeded() {
+        guard
+            let sessionId = UserDefaults.standard.string(forKey: Constants.UserDefaultsKeys.activeDebateSessionId),
+            let uuid = UUID(uuidString: sessionId),
+            let session = allSessions.first(where: { $0.id == uuid })
+        else {
+            return
+        }
+
+        coordinator.currentDebateSession = session
+        restoreStateFromSession(session)
     }
 
     private func persistCurrentSetupIntoActiveSession() {

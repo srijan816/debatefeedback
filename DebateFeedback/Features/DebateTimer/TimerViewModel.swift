@@ -55,6 +55,8 @@ final class TimerViewModel {
         setupSpeakers()
         updateSpeechDurationForCurrentSpeaker()
         loadExistingRecordings()
+        restoreActiveSpeakerIndexIfNeeded()
+        persistActiveSpeakerIndex()
         checkMicrophonePermission()
     }
 
@@ -261,11 +263,18 @@ final class TimerViewModel {
     }
 
     func stopTimer() async {
+        await finalizeCurrentRecording(advanceToNextSpeaker: true)
+    }
+
+    func handleAppInterruptionIfNeeded() async {
+        guard isRecording else { return }
+        await finalizeCurrentRecording(advanceToNextSpeaker: false)
+    }
+
+    private func finalizeCurrentRecording(advanceToNextSpeaker: Bool) async {
         guard isRecording else { return }
 
-        // Stop recording
         guard let result = audioService.stopRecording() else {
-            // If recording failed or was already stopped, force reset state
             isRecording = false
             isPaused = false
             currentRecordingURL = nil
@@ -275,10 +284,12 @@ final class TimerViewModel {
                 type: "audio_recording_error",
                 message: "Recording failed or was stopped unexpectedly",
                 screen: "TimerMainView",
-                action: "stop_recording"
+                action: advanceToNextSpeaker ? "stop_recording" : "app_interruption"
             )
-            errorMessage = "Recording failed or was stopped unexpectedly"
-            showError = true
+            if advanceToNextSpeaker {
+                errorMessage = "Recording failed or was stopped unexpectedly"
+                showError = true
+            }
             return
         }
 
@@ -334,6 +345,7 @@ final class TimerViewModel {
         }
 
         try? modelContext.save()
+        persistActiveSpeakerIndex()
         // Check if session completed
         if recordings.count == speakers.count {
             let sessionDuration = sessionStartTime.map { Date().timeIntervalSince($0) } ?? 0
@@ -347,8 +359,7 @@ final class TimerViewModel {
         // Start upload
         uploadRecording(recording)
 
-        // Move to next speaker automatically
-        if currentSpeakerIndex < speakers.count - 1 {
+        if advanceToNextSpeaker, currentSpeakerIndex < speakers.count - 1 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.nextSpeaker()
             }
@@ -396,6 +407,7 @@ final class TimerViewModel {
         currentSpeakerIndex += 1
         timerService.reset()
         updateSpeechDurationForCurrentSpeaker()
+        persistActiveSpeakerIndex()
 
         // Reset warning flags for new speaker
         has60sWarningFired = false
@@ -409,6 +421,7 @@ final class TimerViewModel {
         currentSpeakerIndex -= 1
         timerService.reset()
         updateSpeechDurationForCurrentSpeaker()
+        persistActiveSpeakerIndex()
 
         // Reset warning flags for new speaker
         has60sWarningFired = false
@@ -573,6 +586,24 @@ final class TimerViewModel {
 
     private func updateSpeechDurationForCurrentSpeaker() {
         timerService.updateSpeechDuration(currentSpeechDuration)
+    }
+
+    private func persistActiveSpeakerIndex() {
+        UserDefaults.standard.set(currentSpeakerIndex, forKey: Constants.UserDefaultsKeys.activeSpeakerIndex)
+    }
+
+    private func restoreActiveSpeakerIndexIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard
+            defaults.string(forKey: Constants.UserDefaultsKeys.activeDebateSessionId) == debateSession.id.uuidString,
+            !speakers.isEmpty
+        else {
+            return
+        }
+
+        let savedIndex = defaults.integer(forKey: Constants.UserDefaultsKeys.activeSpeakerIndex)
+        currentSpeakerIndex = min(max(savedIndex, 0), speakers.count - 1)
+        updateSpeechDurationForCurrentSpeaker()
     }
 
     // MARK: - Playback Management

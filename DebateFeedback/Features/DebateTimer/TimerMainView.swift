@@ -14,6 +14,7 @@ struct TimerMainView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var viewModel: TimerViewModel?
     @State private var showingFeedbackSheet = false
@@ -134,6 +135,12 @@ struct TimerMainView: View {
         }
         .onChange(of: viewModel.isRecording) { _, _ in
             updateIdleTimer(for: viewModel)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .background else { return }
+            Task {
+                await viewModel.handleAppInterruptionIfNeeded()
+            }
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false

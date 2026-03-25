@@ -51,6 +51,7 @@ final class AppCoordinator {
         navigationPath.removeAll()
         currentScreen = .authentication
         currentDebateSession = nil
+        clearActiveRoundPersistence()
     }
 
     func returnToDebateSetup() {
@@ -62,6 +63,7 @@ final class AppCoordinator {
         currentDebateSession = nil
         navigationPath = [.debateSetup]
         currentScreen = .debateSetup
+        clearActiveRoundPersistence()
     }
 
     // MARK: - Authentication Flow
@@ -92,6 +94,7 @@ final class AppCoordinator {
 
     func startDebate(session: DebateSession) {
         self.currentDebateSession = session
+        UserDefaults.standard.set(session.id.uuidString, forKey: Constants.UserDefaultsKeys.activeDebateSessionId)
         navigateTo(.timer(debateSession: session))
     }
 
@@ -131,5 +134,10 @@ final class AppCoordinator {
 
     var canNavigateBack: Bool {
         navigationPath.count > 1
+    }
+
+    private func clearActiveRoundPersistence() {
+        UserDefaults.standard.removeObject(forKey: Constants.UserDefaultsKeys.activeDebateSessionId)
+        UserDefaults.standard.removeObject(forKey: Constants.UserDefaultsKeys.activeSpeakerIndex)
     }
 }

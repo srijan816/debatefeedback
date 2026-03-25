@@ -232,16 +232,95 @@ final class UploadService: NSObject {
             print("Found \(pendingRequests.count) pending uploads. Resuming...")
             
             for request in pendingRequests {
-                if !FileManager.default.fileExists(atPath: request.fileURL.path) {
+                let requestId = request.id
+                let fileURL = request.fileURL
+                let metadata = request.decodedMetadata
+
+                if !FileManager.default.fileExists(atPath: fileURL.path) {
                     context.delete(request)
+                    await markRecordingAsFailed(
+                        id: requestId,
+                        uploadMessage: "Audio file is missing. Please record again."
+                    )
                 } else {
-                    print("Pending upload found for \(request.id). Will be retried when user initiates, or we could auto-retry here.")
+                    print("Resuming pending upload for \(requestId)")
+                    await resumePendingUpload(id: requestId, fileURL: fileURL, metadata: metadata)
                 }
             }
             try context.save()
             
         } catch {
             print("Failed to fetch pending uploads: \(error)")
+        }
+    }
+
+    private func resumePendingUpload(
+        id uploadId: UUID,
+        fileURL: URL,
+        metadata: [String: Any]
+    ) async {
+        await updateRecording(id: uploadId) { recording in
+            recording.uploadStatus = .uploading
+            recording.transcriptionStatus = .processing
+            recording.feedbackStatus = .pending
+            recording.transcriptionErrorMessage = nil
+            recording.feedbackErrorMessage = nil
+            recording.updateAggregatedStatus()
+        }
+
+        activeUploads[uploadId] = UploadTask(id: uploadId, fileURL: fileURL)
+
+        do {
+            let speechId = try await performUpload(
+                endpoint: .uploadSpeech,
+                fileURL: fileURL,
+                metadata: metadata,
+                uploadId: uploadId,
+                progressHandler: { _ in }
+            )
+
+            await updateRecording(id: uploadId) { recording in
+                recording.speechId = speechId
+                recording.uploadStatus = .uploaded
+                recording.feedbackStatus = .processing
+                recording.updateAggregatedStatus()
+            }
+
+            await monitorSpeechProcessing(recordingId: uploadId, speechId: speechId)
+        } catch {
+            await markRecordingAsFailed(
+                id: uploadId,
+                uploadMessage: "Upload failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    func monitorSpeechProcessing(recordingId: UUID, speechId: String) async {
+        let maxAttempts = 60
+
+        for _ in 0..<maxAttempts {
+            try? await Task.sleep(
+                nanoseconds: UInt64(Constants.API.feedbackPollingInterval * 1_000_000_000)
+            )
+
+            do {
+                let status: SpeechStatusResponse = try await APIClient.shared.request(
+                    endpoint: .getSpeechStatus(speechId: speechId)
+                )
+
+                let isTerminal = await applyStatusResponse(status, toRecordingId: recordingId)
+                if isTerminal {
+                    return
+                }
+            } catch {
+                print("Polling error for \(recordingId): \(error)")
+            }
+        }
+
+        await updateRecording(id: recordingId) { recording in
+            recording.feedbackStatus = .failed
+            recording.feedbackErrorMessage = "Timed out waiting for feedback"
+            recording.updateAggregatedStatus()
         }
     }
 
@@ -273,6 +352,91 @@ final class UploadService: NSObject {
 }
 
 // MARK: - Duration Helpers
+
+private extension UploadService {
+    func updateRecording(
+        id: UUID,
+        mutate: @escaping (SpeechRecording) -> Void
+    ) async {
+        let context = DataController.shared.backgroundContext()
+
+        do {
+            let predicate = #Predicate<SpeechRecording> { $0.id == id }
+            let descriptor = FetchDescriptor(predicate: predicate)
+            if let recording = try context.fetch(descriptor).first {
+                mutate(recording)
+                try context.save()
+            }
+        } catch {
+            print("Failed to update SpeechRecording \(id): \(error)")
+        }
+    }
+
+    func markRecordingAsFailed(id: UUID, uploadMessage: String) async {
+        await updateRecording(id: id) { recording in
+            recording.uploadStatus = .failed
+            recording.transcriptionStatus = .failed
+            recording.transcriptionErrorMessage = uploadMessage
+            recording.updateAggregatedStatus()
+        }
+    }
+
+    func applyStatusResponse(_ statusResponse: SpeechStatusResponse, toRecordingId recordingId: UUID) async -> Bool {
+        let lowerStatus = statusResponse.status.lowercased()
+        var isTerminal = false
+
+        await updateRecording(id: recordingId) { recording in
+            if let transStatus = statusResponse.transcriptionStatus {
+                recording.transcriptionStatus = ProcessingStatus(apiStatus: transStatus)
+            } else if lowerStatus == "complete" && recording.transcriptionStatus != .complete {
+                recording.transcriptionStatus = .complete
+            }
+
+            if let transError = statusResponse.transcriptionError, !transError.isEmpty {
+                recording.transcriptionErrorMessage = transError
+                recording.transcriptionStatus = .failed
+            }
+
+            if let feedbackStatus = statusResponse.feedbackStatus {
+                recording.feedbackStatus = ProcessingStatus(apiStatus: feedbackStatus)
+            } else if lowerStatus == "complete" {
+                recording.feedbackStatus = .complete
+            }
+
+            if let feedbackError = statusResponse.feedbackError, !feedbackError.isEmpty {
+                recording.feedbackErrorMessage = feedbackError
+                recording.feedbackStatus = .failed
+            }
+
+            if let feedbackUrl = statusResponse.feedbackUrl, !feedbackUrl.isEmpty {
+                recording.feedbackUrl = feedbackUrl
+            }
+
+            if let transcriptUrl = statusResponse.transcriptUrl, !transcriptUrl.isEmpty {
+                recording.transcriptUrl = transcriptUrl
+            }
+
+            if let transcriptText = statusResponse.transcriptText, !transcriptText.isEmpty {
+                recording.transcriptText = transcriptText
+            }
+
+            if let generalError = statusResponse.errorMessage, !generalError.isEmpty {
+                if recording.feedbackStatus == .failed {
+                    recording.feedbackErrorMessage = generalError
+                } else if recording.transcriptionStatus == .failed {
+                    recording.transcriptionErrorMessage = generalError
+                }
+            }
+
+            recording.updateAggregatedStatus()
+            isTerminal = recording.transcriptionStatus == .failed ||
+                recording.feedbackStatus == .failed ||
+                recording.feedbackStatus == .complete
+        }
+
+        return isTerminal
+    }
+}
 
 private extension UploadService {
     func ensureDuration(for recording: SpeechRecording, fileURL: URL) async -> Int {
