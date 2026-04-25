@@ -70,6 +70,7 @@ final class SetupViewModel {
     }
 
     static let supportedModelOptions: [String] = [
+        "MiniMax-M2.7",
         "x-ai/grok-4.20-beta",
         "openai/gpt-5.4",
         "google/gemini-3.1-flash-lite-preview",
@@ -91,7 +92,7 @@ final class SetupViewModel {
         .init(id: "comparative_analysis", title: "Comparative Analysis", subtitle: "Whole-round comparative adjudication.")
     ]
 
-    private static let defaultModel = "google/gemini-3.1-pro-preview"
+    private static let defaultModel = "MiniMax-M2.7"
 
     var classPickerOptions: [ClassPickerOption] {
         if !availableClasses.isEmpty {
